@@ -120,6 +120,71 @@ else
     echo -e "${GREEN}✓${NC} Archivo .env ya existe"
 fi
 
+# Step 5: Interactive configuration
+echo ""
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}⚙️  CONFIGURACIÓN INTERACTIVA${NC}"
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+# Función para preguntar
+ask_config() {
+    local key="$1"
+    local prompt="$2"
+    local current=$(grep "^${key}=" .env 2>/dev/null | cut -d'=' -f2-)
+    
+    echo ""
+    echo -e "${CYAN}${prompt}${NC}"
+    echo -e "  (actual: ${YELLOW}${current}${NC})"
+    echo -n "  Nuevo valor (Enter para mantener): "
+    read new_value
+    
+    if [ -n "$new_value" ]; then
+        sed -i "s|^${key}=.*|${key}=${new_value}|" .env
+        echo -e "  ${GREEN}✓ Actualizado${NC}"
+    else
+        echo -e "  ${YELLOW}⏭️  Mantenido${NC}"
+    fi
+}
+
+# Preguntar configuración
+echo ""
+echo -e "${BOLD}¿Deseas configurar ahora? (y/n)${NC}"
+read -p "  " configure_now
+
+if [ "$configure_now" = "y" ] || [ "$configure_now" = "Y" ]; then
+    echo ""
+    echo -e "${CYAN}📡 Solana RPC URL${NC}"
+    echo "   Recommended: https://api.mainnet-beta.solana.com"
+    echo "   or: https://rpc.helius.xyz/?api-key=TU_KEY"
+    ask_config "SOLANA_RPC_URL" "RPC URL de Solana"
+    
+    echo ""
+    echo -e "${CYAN}🔑 Birdeye API Key (opcional)${NC}"
+    echo "   Get free key at: https://birdeye.so/"
+    ask_config "BIRDEYE_API_KEY" "API Key de Birdeye"
+    
+    echo ""
+    echo -e "${CYAN}👛 Wallet Private Key${NC}"
+    echo "   ⚠️  NUNCA compartas esta clave!"
+    echo "   ⚠️  Usa una wallet dedicada para trading!"
+    ask_config "WALLET_PRIVATE_KEY" "Clave privada (base58)"
+    
+    echo ""
+    echo -e "${BOLD}¿Modo Dry-Run? (true/false)${NC}"
+    echo "   true = simulación (recomendado para probar)"
+    echo "   false = trading real con dinero"
+    ask_config "DRY_RUN" "Dry-Run Mode"
+    
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}✅ Configuración guardada en .env${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+else
+    echo ""
+    echo -e "${YELLOW}⏭️  Configuración omitida${NC}"
+    echo "   Edita manualmente con: nano .env"
+fi
+
 # Make scripts executable
 chmod +x install_termux.sh run.sh setup_termux.sh solana_bot_complete.py 2>/dev/null || true
 
