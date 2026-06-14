@@ -87,40 +87,22 @@ source venv/bin/activate
 # Actualizar pip primero
 pip install --upgrade pip setuptools wheel -q 2>/dev/null || true
 
-# Instalar paquetes - intentar versión pre-compilada primero
+# Instalar paquetes - solo los necesarios (sin pydantic que requiere compilación)
 echo -e "  Instalando dependencias principales..."
 
-# Función para instalar con fallback a Rust
-install_with_fallback() {
-    # Intentar instalar primero (sin Rust)
-    if pip install pydantic pydantic-settings python-dotenv colorlog aiohttp aiohttp-socks 2>/dev/null; then
-        echo -e "${GREEN}✓${NC} Paquetes instalados (versión pre-compilada)"
-        return 0
-    fi
-    
-    # Si falla, instalar Rust (solo en Termux)
-    if [ "$IS_TERMUX" = true ]; then
-        echo -e "${YELLOW}  Instalando Rust para compilar...${NC}"
-        pkg install -y rust clang make 2>/dev/null || true
-        rustup default stable 2>/dev/null || true
-        
-        # Reintentar instalación
-        if pip install pydantic pydantic-settings python-dotenv colorlog aiohttp aiohttp-socks; then
-            echo -e "${GREEN}✓${NC} Paquetes instalados (compilados)"
-            return 0
-        fi
-    fi
-    
-    return 1
-}
-
-if ! install_with_fallback; then
-    echo -e "${RED}❌ Error instalando paquetes${NC}"
-    echo -e "${YELLOW}  Intenta manualmente:${NC}"
-    echo -e "  pkg install rust clang make"
-    echo -e "  source venv/bin/activate"
-    echo -e "  pip install pydantic pydantic-settings python-dotenv colorlog aiohttp"
-    exit 1
+if pip install python-dotenv colorlog aiohttp aiohttp-socks 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} Paquetes instalados"
+else
+    # Fallback sin output silencioso
+    echo -e "  Reintentando..."
+    pip install python-dotenv colorlog aiohttp aiohttp-socks || {
+        echo -e "${RED}❌ Error instalando paquetes${NC}"
+        echo -e "${YELLOW}  Intenta manualmente:${NC}"
+        echo -e "  pkg install rust clang make"
+        echo -e "  source venv/bin/activate"
+        echo -e "  pip install python-dotenv colorlog aiohttp aiohttp-socks"
+        exit 1
+    }
 fi
 
 # Step 4: Setup config

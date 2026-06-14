@@ -1,9 +1,7 @@
 # Solana Memecoin Trading Bot - Dependencies
 # Install with: pip install -r requirements.txt
 
-# Core
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
+# Core - sin pydantic (no tiene wheel para Termux/Python 3.13)
 python-dotenv>=1.0.0
 colorlog>=6.8.0
 

@@ -91,13 +91,11 @@ pip install --upgrade pip setuptools wheel -q 2>/dev/null || true
 echo -e "${YELLOW}📦 Instalando dependencias de Python...${NC}"
 
 pip install \
-    pydantic>=2.5.0 \
-    pydantic-settings>=2.1.0 \
     python-dotenv>=1.0.0 \
     colorlog>=6.8.0 \
     aiohttp>=3.9.0 \
     aiohttp-socks>=0.8.0 \
-    -q 2>/dev/null || pip install pydantic pydantic-settings python-dotenv colorlog aiohttp aiohttp-socks
+    -q 2>/dev/null || pip install python-dotenv colorlog aiohttp aiohttp-socks
 
 echo -e "${GREEN}✓${NC} Dependencias de Python instaladas"
 
