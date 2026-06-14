@@ -1,26 +1,54 @@
 # 🪄 Solana Memecoin Trading Bot
 
-## Version 1.0.0
+## Version 1.0.1
 
-Algorithmic trading bot for Solana memecoins with martingale strategy and security filters.
+Bot de trading algorítmico para memecoins de Solana con estrategia martingala y filtros de seguridad.
 
 ---
 
-## 🚀 Instalación Rápida en Termux (Android)
+## 🚀 Instalación Express en Termux (Android)
+
+### Opción 1: Un solo comando (copia y pega todo)
 
 ```bash
-# 1. Instala Termux desde F-Droid (NO desde Google Play)
-# https://f-droid.org/packages/com.termux/
+pkg update -y && pkg upgrade -y && pkg install -y python git && cd ~ && rm -rf solana_bot && git clone https://github.com/Oppenheimmer-droid/Seed.git solana_bot && cd solana_bot && chmod +x setup_termux.sh && bash setup_termux.sh
+```
 
-# 2. Copia todos los archivos a Termux
-# Puedes usar: termux-setup-storage para acceder a archivos
+### Opción 2: Paso a paso
 
-# 3. Ejecuta la instalación con UN comando:
+```bash
+# 1. Actualizar Termux
+pkg update -y && pkg upgrade -y
+
+# 2. Instalar dependencias
+pkg install -y python git
+
+# 3. Clonar el proyecto
+cd ~
+rm -rf solana_bot  # si ya existe
+git clone https://github.com/Oppenheimmer-droid/Seed.git solana_bot
+cd solana_bot
+
+# 4. Instalar (esto instala todo automáticamente)
+chmod +x setup_termux.sh
 bash setup_termux.sh
 
-# 4. ¡Listo! Ejecuta el backtesting:
+# 5. Activar y usar
 source venv/bin/activate
 python solana_bot_complete.py backtest --sesiones 1000
+```
+
+---
+
+## ⚙️ Si la instalación falla (Error de pydantic-core)
+
+Si ves el error `Failed building wheel for pydantic-core`, ejecuta:
+
+```bash
+pkg install -y rust clang make
+cd ~/solana_bot
+source venv/bin/activate
+pip install --force-reinstall pydantic pydantic-settings python-dotenv colorlog aiohttp
 ```
 
 ---
@@ -35,8 +63,9 @@ pkg install -y python git curl wget
 
 ### 2. Clona o copia los archivos
 ```bash
-cd ~/storage/shared  # o tu carpeta de trabajo
-# Copia los archivos aquí
+cd ~
+git clone https://github.com/Oppenheimmer-droid/Seed.git solana_bot
+cd solana_bot
 ```
 
 ### 3. Instala
@@ -67,10 +96,10 @@ source venv/bin/activate
 python solana_bot_complete.py backtest --sesiones 1000
 
 # Modo simulación
-./run.sh dryrun <TU_WALLET_PUBLICA>
+./run.sh dryrun
 
 # Modo real (⚠️ PELIGRO)
-./run.sh run <TU_WALLET_PUBLICA>
+./run.sh run <TU_WALLET_PUBLICA> --real
 ```
 
 ---
@@ -98,14 +127,20 @@ python solana_bot_complete.py backtest --sesiones 1000
 ## 💻 Uso
 
 ```bash
-# Backtesting (no necesita credenciales)
+# Activar entorno virtual
+source venv/bin/activate
+
+# BACKTESTING (no necesita credenciales)
 python solana_bot_complete.py backtest --sesiones 10000
 
 # Dry-run mode (simulación)
-python solana_bot_complete.py dryrun <WALLET_PUBKEY>
+python solana_bot_complete.py dryrun
 
 # Real mode (⚠️ PELIGRO)
 python solana_bot_complete.py run <WALLET_PUBKEY> --real
+
+# Ver ayuda
+python solana_bot_complete.py --help
 ```
 
 ---
@@ -118,6 +153,23 @@ python solana_bot_complete.py run <WALLET_PUBKEY> --real
 | Capital Promedio | 847 SOL |
 | Win Rate | 75% |
 | Sharpe Ratio | 0.8 |
+
+---
+
+## 📁 Estructura del Proyecto
+
+```
+solana_bot/
+├── solana_bot_complete.py   # Bot principal (ejecutable)
+├── setup_termux.sh          # Instalación rápida (1 comando)
+├── install_termux.sh        # Instalación completa
+├── run.sh                   # Ejecución rápida
+├── requirements.txt         # Dependencias Python
+├── .env.example             # Plantilla de configuración
+├── .env                     # Tu configuración (creado por setup)
+├── README.md                # Este archivo
+└── venv/                    # Entorno virtual (creado por setup)
+```
 
 ---
 
