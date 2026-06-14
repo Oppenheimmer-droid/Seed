@@ -11,7 +11,9 @@ colorlog>=6.8.0
 aiohttp>=3.9.0
 aiohttp-socks>=0.8.0
 
-# Solana (optional - required for real trading)
+# Solana SDK (optional - for real trading)
+# Install separately on Termux: pkg install rust cargo clang make
+# Then: pip install solders solana base58
 # solders>=0.18.0
 # solana>=0.30.0
 # base58>=2.1.1

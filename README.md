@@ -6,99 +6,116 @@ Algorithmic trading bot for Solana memecoins with martingale strategy and securi
 
 ---
 
-## 📱 Installation for Termux (Android)
-
-### 1. Install Termux
-⚠️ **DO NOT** install from Google Play Store (outdated version)
-✅ Install from F-Droid: https://f-droid.org/packages/com.termux/
-
-### 2. Install Dependencies in Termux
+## 🚀 Instalación Rápida en Termux (Android)
 
 ```bash
-# Update system
+# 1. Instala Termux desde F-Droid (NO desde Google Play)
+# https://f-droid.org/packages/com.termux/
+
+# 2. Copia todos los archivos a Termux
+# Puedes usar: termux-setup-storage para acceder a archivos
+
+# 3. Ejecuta la instalación con UN comando:
+bash setup_termux.sh
+
+# 4. ¡Listo! Ejecuta el backtesting:
+source venv/bin/activate
+python solana_bot_complete.py backtest --sesiones 1000
+```
+
+---
+
+## 📱 Instalación Manual en Termux
+
+### 1. Actualiza Termux
+```bash
 pkg update -y && pkg upgrade -y
+pkg install -y python git curl wget
+```
 
-# Install dependencies
-pkg install -y python git wget curl
+### 2. Clona o copia los archivos
+```bash
+cd ~/storage/shared  # o tu carpeta de trabajo
+# Copia los archivos aquí
+```
 
-# Clone or download the bot
-git clone https://github.com/YOUR_USER/YOUR_REPO.git ~/solana_bot
-cd ~/solana_bot
-
-# Run install script
+### 3. Instala
+```bash
 chmod +x install_termux.sh
 ./install_termux.sh
 ```
 
-### 3. Configure
-
+### 4. Configura
 ```bash
-# Edit configuration
 nano .env
 ```
 
-Fill in your credentials:
+Edita con tus credenciales:
 ```env
-WALLET_PRIVATE_KEY=your_base58_private_key
-SOLANA_RPC_URL=https://rpc.helius.xyz/?api-key=YOUR_KEY
-BIRDEYE_API_KEY=your_birdeye_key
+WALLET_PRIVATE_KEY=tu_clave_privada_base58
+SOLANA_RPC_URL=https://rpc.helius.xyz/?api-key=TU_KEY
+BIRDEYE_API_KEY=tu_key_de_birdeye
 DRY_RUN=true
 ```
 
-### 4. Run Backtesting
-
+### 5. Ejecuta
 ```bash
+# Activa el entorno virtual
 source venv/bin/activate
+
+# Backtesting (sin credenciales)
 python solana_bot_complete.py backtest --sesiones 1000
+
+# Modo simulación
+./run.sh dryrun <TU_WALLET_PUBLICA>
+
+# Modo real (⚠️ PELIGRO)
+./run.sh run <TU_WALLET_PUBLICA>
 ```
 
 ---
 
-## 🖥️ Installation for Linux/macOS
+## 🖥️ Instalación en Linux/macOS
 
 ```bash
-# Clone repository
-git clone https://github.com/YOUR_USER/YOUR_REPO.git ~/solana_bot
+# Clona o copia los archivos
 cd ~/solana_bot
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
+# Instala dependencias
+chmod +x install_termux.sh
+./install_termux.sh
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure
-cp .env.example .env
+# Configura
 nano .env
 
-# Run
+# Ejecuta
+source venv/bin/activate
 python solana_bot_complete.py backtest --sesiones 1000
 ```
 
 ---
 
-## 💻 Usage
+## 💻 Uso
 
 ```bash
-# Backtesting (no credentials needed)
+# Backtesting (no necesita credenciales)
 python solana_bot_complete.py backtest --sesiones 10000
 
-# Dry-run mode (simulation)
-python solana_bot_complete.py run <WALLET_PUBKEY>
+# Dry-run mode (simulación)
+python solana_bot_complete.py dryrun <WALLET_PUBKEY>
 
-# Real mode (⚠️ DANGEROUS)
+# Real mode (⚠️ PELIGRO)
 python solana_bot_complete.py run <WALLET_PUBKEY> --real
 ```
 
 ---
 
-## 📊 Backtesting Results (10,000 sessions)
+## 📊 Resultados del Backtesting (10,000 sesiones)
 
-| Metric | Result |
-|--------|--------|
-| Success Rate | 86% |
-| Average Capital | 847 SOL |
+| Métrica | Resultado |
+|---------|-----------|
+| Tasa de Éxito | 86% |
+| Capital Promedio | 847 SOL |
 | Win Rate | 75% |
 | Sharpe Ratio | 0.8 |
 
@@ -106,10 +123,10 @@ python solana_bot_complete.py run <WALLET_PUBKEY> --real
 
 ## ⚠️ Disclaimer
 
-THIS SOFTWARE IS PROVIDED "AS IS". CRYPTOCURRENCY TRADING INVOLVES SIGNIFICANT RISKS. USE AT YOUR OWN RISK.
+ESTE SOFTWARE SE PROPORCIONA "TAL CUAL". EL TRADING DE CRIPTOMONEDAS IMPLICA RIESGOS SIGNIFICATIVOS. ÚSALO BAJO TU PROPIO RIESGO.
 
 ---
 
-## 📄 License
+## 📄 Licencia
 
 MIT License
