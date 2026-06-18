@@ -45,7 +45,6 @@ fi
 # Paso 2: Instalar dependencias
 echo ""
 echo -e "${GREEN}[2/4]${NC} Instalando dependencias de Python..."
-pip install --upgrade pip
 pip install httpx aiohttp beautifulsoup4 python-dotenv
 
 # Paso 3: Instalar el paquete
@@ -58,7 +57,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/pyproject.toml" ]; then
     # Instalar desde el directorio local
     echo -e "${YELLOW}[i]${NC} Instalando desde directorio local..."
-    pip install -e "$SCRIPT_DIR"
+    cd "$SCRIPT_DIR"
+    pip install -e . 2>/dev/null || pip install .
 else
     # Instalar desde GitHub directamente
     echo -e "${YELLOW}[i]${NC} Instalando desde GitHub..."
