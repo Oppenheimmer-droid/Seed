@@ -1,0 +1,317 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Solana Memecoin Bot Configuration Schema",
+  "description": "Schema de validación para la configuración del bot de trading",
+  "type": "object",
+  "required": ["capital", "filters", "dex_screener", "network", "loop"],
+  "properties": {
+    "capital": {
+      "type": "object",
+      "description": "Configuración de capital y límites de trading",
+      "properties": {
+        "capital_inicial": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000,
+          "default": 500.0,
+          "description": "Capital inicial en SOL"
+        },
+        "objetivo_global": {
+          "type": "number",
+          "minimum": 0,
+          "default": 615.0,
+          "description": "Objetivo de profit global en SOL"
+        },
+        "stop_loss_global": {
+          "type": "number",
+          "minimum": 0,
+          "default": 100.0,
+          "description": "Stop loss global en SOL"
+        },
+        "inversion_base": {
+          "type": "number",
+          "minimum": 0.1,
+          "default": 100.0,
+          "description": "Inversión base por trade en SOL"
+        },
+        "max_entradas_por_token": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 5,
+          "description": "Máximo de entradas (martingala) por token"
+        },
+        "max_posiciones_simultaneas": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "default": 5,
+          "description": "Máximo de posiciones abiertas simultáneas"
+        }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "description": "Configuración de filtros de seguridad",
+      "properties": {
+        "pump_minimo_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 1.0,
+          "description": "Pump mínimo (%) para entrar en posición"
+        },
+        "umbral_martingala_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 0.1,
+          "description": "Umbral de caída (%) para aplicar martingala"
+        },
+        "caida_minima_salida_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 0.03,
+          "description": "Caída mínima (%) desde ATH para cerrar posición"
+        },
+        "liquidez_minima_sol": {
+          "type": "number",
+          "minimum": 0,
+          "default": 10.0,
+          "description": "Liquidez mínima en SOL"
+        },
+        "holders_minimos": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 100,
+          "description": "Mínimo de holders del token"
+        },
+        "pool_age_minimo_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 120,
+          "description": "Edad mínima del pool en segundos"
+        },
+        "top_holder_maximo_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.20,
+          "description": "Concentración máxima del top holder (0.0-1.0)"
+        },
+        "volumen_5min_minimo_sol": {
+          "type": "number",
+          "minimum": 0,
+          "default": 50.0,
+          "description": "Volumen mínimo en 5 minutos en SOL"
+        },
+        "precio_minimo_sol": {
+          "type": "number",
+          "minimum": 0,
+          "default": 0.000001,
+          "description": "Precio mínimo del token en SOL"
+        },
+        "sell_tax_maximo": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.10,
+          "description": "Tax máximo de venta (0.0-1.0)"
+        },
+        "buy_tax_maximo": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.10,
+          "description": "Tax máximo de compra (0.0-1.0)"
+        }
+      }
+    },
+    "dex_screener": {
+      "type": "object",
+      "description": "Configuración de DexScreener",
+      "required": ["enabled", "priority"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Habilitar DexScreener como fuente"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["birdeye", "dexscreener", "hybrid"],
+          "default": "birdeye",
+          "description": "Prioridad de fuente de datos"
+        },
+        "min_liquidity_usd": {
+          "type": "number",
+          "minimum": 0,
+          "default": 50000,
+          "description": "Liquidez mínima en USD"
+        },
+        "min_volume_5m_usd": {
+          "type": "number",
+          "minimum": 0,
+          "default": 10000,
+          "description": "Volumen mínimo en 5 minutos en USD"
+        },
+        "max_age_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 60,
+          "description": "Edad máxima del token en minutos"
+        },
+        "min_holders": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 100,
+          "description": "Mínimo de holders"
+        },
+        "max_top_holder_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.20,
+          "description": "Porcentaje máximo del top holder"
+        },
+        "dex_whitelist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["raydium", "meteora", "pump.fun"],
+          "description": "Lista de DEXs permitidos"
+        },
+        "watchlist": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+          },
+          "default": [],
+          "description": "Lista de direcciones de tokens a seguir"
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "description": "Configuración de red y APIs",
+      "properties": {
+        "solana_rpc_url": {
+          "type": "string",
+          "format": "uri",
+          "default": "https://api.mainnet-beta.solana.com",
+          "description": "URL del RPC de Solana"
+        },
+        "jupiter_api_url": {
+          "type": "string",
+          "format": "uri",
+          "default": "https://quote-api.jup.ag/v6",
+          "description": "URL de Jupiter API"
+        },
+        "birdeye_api_url": {
+          "type": "string",
+          "format": "uri",
+          "default": "https://public-api.birdeye.so",
+          "description": "URL de Birdeye API"
+        },
+        "birdeye_api_key": {
+          "type": "string",
+          "default": "",
+          "description": "API key de Birdeye (opcional)"
+        },
+        "wallet_private_key": {
+          "type": "string",
+          "default": "",
+          "description": "Clave privada de wallet (nunca guardar en repo)"
+        },
+        "sol_mint": {
+          "type": "string",
+          "pattern": "^So11111111111111111111111111111111111111112$",
+          "default": "So11111111111111111111111111111111111111112",
+          "description": "Dirección del mint de SOL"
+        },
+        "slippage_bps_compra": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "default": 300,
+          "description": "Slippage en bps para compra (300 = 3%)"
+        },
+        "slippage_bps_venta": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "default": 500,
+          "description": "Slippage en bps para venta (500 = 5%)"
+        },
+        "priority_fee": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 100000,
+          "description": "Priority fee en lamports"
+        },
+        "loop_interval": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 60,
+          "default": 2.0,
+          "description": "Intervalo del loop principal en segundos"
+        },
+        "log_file": {
+          "type": "string",
+          "default": "trading_bot.log",
+          "description": "Archivo de log"
+        },
+        "log_level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+          "default": "INFO",
+          "description": "Nivel de log"
+        }
+      }
+    },
+    "loop": {
+      "type": "object",
+      "description": "Configuración del loop perpetuo",
+      "properties": {
+        "capital_operativo_base": {
+          "type": "number",
+          "minimum": 0,
+          "default": 100.0,
+          "description": "Capital operativo base por ciclo en SOL"
+        },
+        "extraccion_por_ciclo": {
+          "type": "number",
+          "minimum": 0,
+          "default": 15.0,
+          "description": "Cantidad a extraer por ciclo en SOL"
+        },
+        "stop_ciclo": {
+          "type": "number",
+          "maximum": 0,
+          "default": -50.0,
+          "description": "Pérdida que activa stop del ciclo (negativo)"
+        },
+        "max_ciclos_sin_profit": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5,
+          "description": "Máximo de ciclos sin profit antes de pausar"
+        },
+        "tiempo_espera_entre_ciclos": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 60,
+          "description": "Tiempo de espera entre ciclos en segundos"
+        }
+      }
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": true,
+      "description": "Modo dry-run (sin transacciones reales)"
+    }
+  }
+}

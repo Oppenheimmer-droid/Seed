@@ -1,134 +1,296 @@
 #!/bin/bash
-# ============================================
-# Solana Memecoin Trading Bot
-# Install Script for Termux (Android) / Linux
-# ============================================
+# ═══════════════════════════════════════════════════════════════════════════════
+#  SOLANA MEMEBOT - INSTALADOR PARA TERMUX (Android)
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Compatible con: Termux (Android 7+), Python 3.10+
+#  Versión: 1.1.0
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Uso:
+#    bash <(curl -sL https://git.io/seed-termux)
+#    O guarda este archivo y ejecuta: bash install_termux.sh
+# ═══════════════════════════════════════════════════════════════════════════════
 
 set -e
 
+# Colores
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-echo -e "${CYAN}"
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║                                                          ║"
-echo "║   ${BOLD}🪄 Solana Memecoin Trading Bot${NC}${CYAN}                        ║"
-echo "║   ${BOLD}Install Script for Termux/Android${NC}${CYAN}                   ║"
-echo "║                                                          ║"
-echo "╚══════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
+# Configuración
+REPO_URL="https://github.com/Oppenheimmer-droid/Seed"
+REPO_DIR="$HOME/Seed"
+BOT_DIR="$HOME/.solana_memebot"
+PYTHON_MIN="3.10"
 
-# Detect OS
-if [ -f /data/data/com.termux/files/usr/bin/bash ]; then
-    IS_TERMUX=true
-    PKG="pkg"
-else
-    IS_TERMUX=false
-    PKG="apt-get"
-fi
+# Banner
+show_banner() {
+    clear
+    echo -e "${CYAN}"
+    echo "╔═══════════════════════════════════════════════════════════════════════╗"
+    echo "║                                                                       ║"
+    echo -e "║  ${BOLD}🤖 SOLANA MEMEBOT${NC}${CYAN}                                            ║"
+    echo -e "║     ${BOLD}Instalador para Termux (Android)${NC}${CYAN}                            ║"
+    echo -e "║     ${BOLD}Versión 1.1.0${NC}${CYAN}                                               ║"
+    echo "║                                                                       ║"
+    echo "╚═══════════════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+}
 
-echo -e "${YELLOW}📋 Checking system...${NC}"
-
-# Check Python
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}❌ Python 3 not found${NC}"
-    if [ "$IS_TERMUX" = true ]; then
-        echo "   Run: pkg install python"
-    else
-        echo "   Run: sudo apt install python3 python3-pip python3-venv"
+# Verificar Termux
+check_termux() {
+    if [ ! -d "/data/data/com.termux/files/home" ]; then
+        echo -e "${YELLOW}⚠️  ADVERTENCIA:${NC} Este script está diseñado para Termux."
+        echo "    Se detectó un sistema diferente. Continuando de todos modos..."
+        echo ""
+        read -p "¿Continuar? (s/n): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Ss]$ ]]; then
+            exit 0
+        fi
     fi
-    exit 1
-fi
+}
 
-PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-echo -e "  ${GREEN}✓${NC} Python $PYTHON_VERSION"
+# Verificar Python
+check_python() {
+    echo -e "${BLUE}[1/6]${NC} Verificando Python..."
+    
+    if ! command -v python &> /dev/null; then
+        echo -e "${YELLOW}  Python no encontrado. Instalando...${NC}"
+        pkg update -y && pkg install -y python
+    fi
+    
+    PYTHON_VERSION=$(python -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+    echo -e "  Python version: ${GREEN}$PYTHON_VERSION${NC}"
+    
+    # Verificar versión mínima
+    PYTHON_MAJOR=$(python -c 'import sys; print(sys.version_info[0])')
+    PYTHON_MINOR=$(python -c 'import sys; print(sys.version_info[1])')
+    REQUIRED_MAJOR=3
+    REQUIRED_MINOR=10
+    
+    if [ "$PYTHON_MAJOR" -lt "$REQUIRED_MAJOR" ] || \
+       ([ "$PYTHON_MAJOR" -eq "$REQUIRED_MAJOR" ] && [ "$PYTHON_MINOR" -lt "$REQUIRED_MINOR" ]); then
+        echo -e "${RED}❌ Error: Se requiere Python 3.10 o superior${NC}"
+        echo "    Versión actual: $PYTHON_VERSION"
+        exit 1
+    fi
+}
 
-# Install system dependencies
-echo -e "${YELLOW}📦 Installing system dependencies...${NC}"
-if [ "$IS_TERMUX" = true ]; then
-    $PKG update -y
-    $PKG upgrade -y
-    $PKG install -y git wget curl openssl libffi
-    # Optional: for compiling Rust packages
-    # $PKG install -y rust cargo clang make
-else
-    sudo $PKG update -y
-    sudo $PKG install -y python3-pip python3-venv git wget curl
-fi
+# Instalar dependencias
+install_deps() {
+    echo ""
+    echo -e "${BLUE}[2/6]${NC} Instalando dependencias del sistema..."
+    
+    # Actualizar pkg (sin --upgrade pip)
+    pkg update -y
+    pkg install -y git curl
+    
+    echo ""
+    echo -e "${BLUE}[3/6]${NC} Instalando dependencias de Python..."
+    
+    # NO usar pip install --upgrade pip (rompe Termux)
+    pip install httpx aiohttp beautifulsoup4 python-dotenv
+    
+    echo -e "  ${GREEN}✓${NC} Dependencias instaladas"
+}
 
-# Create virtual environment
-echo -e "${YELLOW}🗄️  Creating virtual environment...${NC}"
-if [ ! -d "venv" ]; then
-    python3 -m venv venv
-    echo -e "${GREEN}✓${NC} Virtual environment created"
-else
-    echo -e "${GREEN}✓${NC} Virtual environment already exists"
-fi
+# Clonar o actualizar repositorio
+setup_repo() {
+    echo ""
+    echo -e "${BLUE}[4/6]${NC} Configurando repositorio..."
+    
+    if [ -d "$REPO_DIR/.git" ]; then
+        echo "  Repositorio encontrado. Actualizando..."
+        cd "$REPO_DIR"
+        git pull origin release/termux-v1.1.0 || git pull origin main
+        echo -e "  ${GREEN}✓${NC} Repositorio actualizado"
+    else
+        echo "  Clonando repositorio..."
+        git clone -b release/termux-v1.1.0 "$REPO_URL" "$REPO_DIR"
+        echo -e "  ${GREEN}✓${NC} Repositorio clonado"
+    fi
+}
 
-# Activate venv
-source venv/bin/activate
+# Crear directorio de datos
+setup_data_dir() {
+    echo ""
+    echo -e "${BLUE}[5/6]${NC} Creando directorio de datos..."
+    
+    mkdir -p "$BOT_DIR"
+    
+    # Crear archivo de configuración por defecto si no existe
+    if [ ! -f "$BOT_DIR/dex_config.json" ]; then
+        cat > "$BOT_DIR/dex_config.json" << 'EOF'
+{
+  "dex_screener": {
+    "enabled": true,
+    "priority": "birdeye",
+    "min_liquidity_usd": 50000,
+    "min_volume_5m_usd": 10000,
+    "max_age_minutes": 60,
+    "min_holders": 100,
+    "max_top_holder_pct": 0.20,
+    "dex_whitelist": ["raydium", "meteora", "pump.fun"],
+    "watchlist": []
+  },
+  "loop": {
+    "capital_operativo_base": 100.0,
+    "extraccion_por_ciclo": 15.0,
+    "stop_ciclo": -50.0
+  }
+}
+EOF
+        echo -e "  ${GREEN}✓${NC} Configuración por defecto creada"
+    else
+        echo -e "  ${YELLOW}ℹ${NC} Configuración existente preservada"
+    fi
+    
+    # Crear watchlist vacía si no existe
+    if [ ! -f "$BOT_DIR/watchlist.json" ]; then
+        echo '{"version": "1.0", "updated_at": "", "tokens": []}' > "$BOT_DIR/watchlist.json"
+    fi
+    
+    echo "  Directorio: $BOT_DIR"
+}
 
-# Upgrade pip
-echo -e "${YELLOW}📥 Upgrading pip...${NC}"
-pip install --upgrade pip setuptools wheel -q
+# Verificar instalación
+verify_install() {
+    echo ""
+    echo -e "${BLUE}[6/6]${NC} Verificando instalación..."
+    
+    cd "$REPO_DIR"
+    
+    # Verificar estructura
+    if [ -f "solana_bot/menu/interactive.py" ]; then
+        echo -e "  ${GREEN}✓${NC} Estructura del bot correcta"
+    else
+        echo -e "  ${RED}✗${NC} Error: Estructura del bot no encontrada"
+        exit 1
+    fi
+    
+    # Verificar dependencias de Python
+    python -c "import httpx; import aiohttp; import bs4; print('  ✓ Dependencias OK')" 2>/dev/null || {
+        echo -e "  ${RED}✗${NC} Error: Faltan dependencias de Python"
+        exit 1
+    }
+    
+    echo -e "  ${GREEN}✓${NC} Instalación verificada"
+}
 
-# Install Python dependencies
-echo -e "${YELLOW}📦 Installing Python dependencies...${NC}"
+# Mostrar instrucciones finales
+show_instructions() {
+    echo ""
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}${BOLD}  ✅ INSTALACIÓN COMPLETADA${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${BOLD}📱 EJECUTAR EL BOT:${NC}"
+    echo ""
+    echo -e "  1. Ir al directorio:"
+    echo -e "     ${GREEN}cd $REPO_DIR${NC}"
+    echo ""
+    echo -e "  2. Ejecutar el menú interactivo:"
+    echo -e "     ${GREEN}python solana_bot/menu/interactive.py${NC}"
+    echo ""
+    echo -e "  3. Para ejecución continua (loop):"
+    echo -e "     ${GREEN}python solana_bot/menu/interactive.py --loop${NC}"
+    echo ""
+    echo -e "${BOLD}📁 ARCHIVOS:${NC}"
+    echo "     Datos: $BOT_DIR"
+    echo "     Repo:  $REPO_DIR"
+    echo ""
+    echo -e "${BOLD}🔄 ACTUALIZAR:${NC}"
+    echo "     cd $REPO_DIR && git pull"
+    echo ""
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════════════${NC}"
+}
 
-# Core dependencies (without solana package that requires Rust compiler)
-pip install \
-    pydantic>=2.5.0 \
-    pydantic-settings>=2.1.0 \
-    python-dotenv>=1.0.0 \
-    colorlog>=6.8.0 \
-    aiohttp>=3.9.0 \
-    -q
+# Menú interactivo post-instalación
+show_menu() {
+    while true; do
+        echo ""
+        echo -e "${CYAN}═══════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${BOLD}  MENÚ PRINCIPAL${NC}"
+        echo -e "${CYAN}═══════════════════════════════════════════════════════════════════════${NC}"
+        echo ""
+        echo "  1. Ejecutar menú de configuración"
+        echo "  2. Ver estado de configuración"
+        echo "  3. Agregar token a watchlist"
+        echo "  4. Probar conexión DexScreener"
+        echo "  5. Actualizar bot"
+        echo "  0. Salir"
+        echo ""
+        read -p "  Seleccione opción: " choice
+        
+        case $choice in
+            1)
+                cd "$REPO_DIR"
+                python solana_bot/menu/interactive.py
+                ;;
+            2)
+                cat "$BOT_DIR/dex_config.json" 2>/dev/null || echo "No hay configuración"
+                ;;
+            3)
+                read -p "  Dirección del token: " token_addr
+                if [ -n "$token_addr" ]; then
+                    python -c "
+import json
+with open('$BOT_DIR/watchlist.json', 'r') as f:
+    data = json.load(f)
+if '$token_addr' not in data['tokens']:
+    data['tokens'].append('$token_addr')
+    with open('$BOT_DIR/watchlist.json', 'w') as f:
+        json.dump(data, f, indent=2)
+    print('  ✓ Token agregado')
+else:
+    print('  ℹ Token ya existe')
+"
+                fi
+                ;;
+            4)
+                echo "  Probando conexión..."
+                cd "$REPO_DIR"
+                python check_dexscreener.py
+                ;;
+            5)
+                cd "$REPO_DIR"
+                git pull
+                ;;
+            0)
+                echo "  ¡Hasta luego!"
+                exit 0
+                ;;
+            *)
+                echo "  Opción inválida"
+                ;;
+        esac
+    done
+}
 
-# Optional: Try to install Solana SDK (requires Rust on Termux)
-if [ "$IS_TERMUX" = true ]; then
-    echo -e "${YELLOW}⚠️  Note: 'solana' package requires Rust compiler${NC}"
-    echo "   For full trading, run: pkg install rust cargo clang make"
-    echo "   Then: pip install solana solders"
-else
-    pip install solana solders base58 -q 2>/dev/null || true
-fi
+# MAIN
+main() {
+    show_banner
+    check_termux
+    check_python
+    install_deps
+    setup_repo
+    setup_data_dir
+    verify_install
+    
+    echo ""
+    read -p "¿Ejecutar menú de configuración ahora? (s/n): " -n 1 -r
+    echo
+    
+    if [[ $REPLY =~ ^[Ss]$ ]]; then
+        show_menu
+    else
+        show_instructions
+    fi
+}
 
-echo -e "${GREEN}✓${NC} Dependencies installed"
-
-# Create .env from example if not exists
-if [ ! -f ".env" ]; then
-    echo -e "${YELLOW}📝 Creating configuration file...${NC}"
-    cp .env.example .env
-    echo -e "${GREEN}✓${NC} .env created"
-    echo -e "${YELLOW}⚠️  Please edit .env with your credentials${NC}"
-else
-    echo -e "${GREEN}✓${NC} .env already exists"
-fi
-
-echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║${NC}${BOLD}                  ✅ INSTALLATION COMPLETED                     ${NC}${GREEN}║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "${BOLD}Next steps:${NC}"
-echo ""
-echo -e "  1. Edit configuration:"
-echo -e "     ${CYAN}nano .env${NC}"
-echo ""
-echo -e "  2. Run backtesting (no credentials needed):"
-echo -e "     ${CYAN}source venv/bin/activate${NC}"
-echo -e "     ${CYAN}python solana_bot_complete.py backtest --sesiones 1000${NC}"
-echo ""
-echo -e "  3. Run in dry-run mode:"
-echo -e "     ${CYAN}source venv/bin/activate${NC}"
-echo -e "     ${CYAN}python solana_bot_complete.py dryrun${NC}"
-echo ""
-echo -e "${YELLOW}⚠️  IMPORTANT:${NC}"
-echo "  - Never share your private key"
-echo "  - Always start in dry-run mode"
-echo "  - Use a dedicated wallet for trading"
-echo ""
+main "$@"

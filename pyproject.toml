@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "solana-memebot"
+version = "1.1.0"
+description = "Solana Memecoin Trading Bot with DexScreener integration"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "OpenHands Agent", email = "openhands@all-hands.dev"}
+]
+keywords = ["solana", "trading", "bot", "memecoin", "dexscreener"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+dependencies = [
+    "httpx>=0.25.0",
+    "aiohttp>=3.9.0",
+    "beautifulsoup4>=4.12.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[project.scripts]
+memenot = "solana_bot.menu.interactive:main"
+
+[project.urls]
+Homepage = "https://github.com/Oppenheimmer-droid/Seed"
+Documentation = "https://github.com/Oppenheimmer-droid/Seed/blob/main/MENU_GUIDE.md"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["solana_bot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
