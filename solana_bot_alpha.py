@@ -56,61 +56,62 @@ from dataclasses import dataclass
 
 
 # =============================================
-# PARTE 1: Base58 (usando biblioteca estándar si disponible)
 # =============================================
+# PARTE 1: Base58 Encoding/Decoding (Pure Python)
+# Fixed for Termux compatibility
+# =============================================
+_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+_BASE58_TABLE = {c: i for i, c in enumerate(_ALPHABET)}
 
-try:
-    # Try to use standard base58 library
-    import base58
-except ImportError:
-    # Fallback: Pure Python base58 implementation
-    _BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-    _BASE58_MAP = {c: i for i, c in enumerate(_BASE58_ALPHABET)}
 
-    def base58_encode(data: bytes) -> str:
-        """Encode bytes to Base58 string"""
-        num = int.from_bytes(data, 'big')
-        encoded = ""
-        while num >= 58:
-            num, rem = divmod(num, 58)
-            encoded = _BASE58_ALPHABET[rem] + encoded
-        encoded = _BASE58_ALPHABET[num] + encoded
-        
-        for byte in data:
-            if byte == 0:
-                encoded = '1' + encoded
-            else:
-                break
-        
-        return encoded
+def base58_encode(data: bytes) -> str:
+    """Encode bytes to Base58"""
+    if not data:
+        return ""
+    zeros = sum(1 for b in data if b == 0)
+    num = int.from_bytes(data, 'big')
+    result = []
+    while num > 0:
+        num, rem = divmod(num, 58)
+        result.append(_ALPHABET[rem])
+    return '1' * zeros + ''.join(reversed(result))
 
-    def base58_decode(encoded: str) -> bytes:
-        """Decode Base58 string to bytes"""
-        num = 0
-        for char in encoded:
-            if char not in _BASE58_MAP:
-                raise ValueError(f"Invalid Base58 character: {char}")
-            num = num * 58 + _BASE58_MAP[char]
-        
-        hex_str = hex(num)[2:]
-        if len(hex_str) % 2:
-            hex_str = '0' + hex_str
-        
-        result = bytes()
-        for char in encoded:
-            if char == '1':
-                result += bytes([0])
-            else:
-                break
-        
-        result += bytes.fromhex(hex_str)
-        return result
 
-    class _Base58Module:
-        b58decode = staticmethod(base58_decode)
-        b58encode = staticmethod(base58_encode)
+def base58_decode(input_str: str) -> bytes:
+    """Decode Base58 to bytes"""
+    if not input_str:
+        return b""
+    leading = 0
+    for c in input_str:
+        if c == '1':
+            leading += 1
+        else:
+            break
+    num = 0
+    for c in input_str:
+        if c not in _BASE58_TABLE:
+            raise ValueError(f"Invalid char: {c}")
+        num = num * 58 + _BASE58_TABLE[c]
+    if num == 0:
+        return b'\x00' * leading
+    hex_str = format(num, 'x')
+    if len(hex_str) % 2:
+        hex_str = '0' + hex_str
+    result = bytes.fromhex(hex_str)
+    return b'\x00' * leading + result
 
-    base58 = _Base58Module()
+
+class _Base58Module:
+    @staticmethod
+    def b58encode(data: bytes) -> str:
+        return base58_encode(data)
+    @staticmethod
+    def b58decode(encoded: str) -> bytes:
+        return base58_decode(encoded)
+
+
+base58 = _Base58Module()
+
 
 
 # =============================================
