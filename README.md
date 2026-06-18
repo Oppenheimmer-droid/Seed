@@ -1,125 +1,28 @@
 # 🪄 Solana Memecoin Trading Bot
 
-## Version 1.0.1
+## Version 2.1
 
 Bot de trading algorítmico para memecoins de Solana con estrategia martingala y filtros de seguridad.
+**100% Puro Python** — Sin Rust, sin solders, sin PyNaCl como requisito.
+
+---
+
+## ✅ Características v2.1
+
+- 🚫 **Sin dependencias nativas** — Funciona en Termux Android ARM64 sin Rust
+- 🔐 **Ed25519 puro Python** — Implementación propia para firmas
+- 🛡️ **Validación de config** — Detecta URLs en lugar de API keys
+- 📊 **Menú interactivo** — Panel de control con 7 opciones
+- 📝 **Logs en pantalla** — Timestamps y emojis para readability
 
 ---
 
 ## 🚀 Instalación Express en Termux (Android)
 
-### Opción 1: Un solo comando (copia y pega todo)
+### Un solo comando (copia y pega todo)
 
 ```bash
 pkg update -y && pkg upgrade -y && pkg install -y python git && cd ~ && rm -rf solana_bot && git clone https://github.com/Oppenheimmer-droid/Seed.git solana_bot && cd solana_bot && chmod +x setup_termux.sh && bash setup_termux.sh
-```
-
-### Opción 2: Paso a paso
-
-```bash
-# 1. Actualizar Termux
-pkg update -y && pkg upgrade -y
-
-# 2. Instalar dependencias
-pkg install -y python git
-
-# 3. Clonar el proyecto
-cd ~
-rm -rf solana_bot  # si ya existe
-git clone https://github.com/Oppenheimmer-droid/Seed.git solana_bot
-cd solana_bot
-
-# 4. Instalar (esto instala todo automáticamente)
-chmod +x setup_termux.sh
-bash setup_termux.sh
-
-# 5. Activar y usar
-source venv/bin/activate
-python solana_bot_complete.py backtest --sesiones 1000
-```
-
----
-
-## ⚙️ Si la instalación falla (Error de pydantic-core)
-
-Si ves el error `Failed building wheel for pydantic-core`, ejecuta:
-
-```bash
-pkg install -y rust clang make
-cd ~/solana_bot
-source venv/bin/activate
-pip install --force-reinstall pydantic pydantic-settings python-dotenv colorlog aiohttp
-```
-
----
-
-## 📱 Instalación Manual en Termux
-
-### 1. Actualiza Termux
-```bash
-pkg update -y && pkg upgrade -y
-pkg install -y python git curl wget
-```
-
-### 2. Clona o copia los archivos
-```bash
-cd ~
-git clone https://github.com/Oppenheimmer-droid/Seed.git solana_bot
-cd solana_bot
-```
-
-### 3. Instala
-```bash
-chmod +x install_termux.sh
-./install_termux.sh
-```
-
-### 4. Configura
-```bash
-nano .env
-```
-
-Edita con tus credenciales:
-```env
-WALLET_PRIVATE_KEY=tu_clave_privada_base58
-SOLANA_RPC_URL=https://rpc.helius.xyz/?api-key=TU_KEY
-BIRDEYE_API_KEY=tu_key_de_birdeye
-DRY_RUN=true
-```
-
-### 5. Ejecuta
-```bash
-# Activa el entorno virtual
-source venv/bin/activate
-
-# Backtesting (sin credenciales)
-python solana_bot_complete.py backtest --sesiones 1000
-
-# Modo simulación
-./run.sh dryrun
-
-# Modo real (⚠️ PELIGRO)
-./run.sh run <TU_WALLET_PUBLICA> --real
-```
-
----
-
-## 🖥️ Instalación en Linux/macOS
-
-```bash
-# Clona o copia los archivos
-cd ~/solana_bot
-
-# Instala dependencias
-chmod +x install_termux.sh
-./install_termux.sh
-
-# Configura
-nano .env
-
-# Ejecuta
-source venv/bin/activate
-python solana_bot_complete.py backtest --sesiones 1000
 ```
 
 ---
@@ -130,18 +33,72 @@ python solana_bot_complete.py backtest --sesiones 1000
 # Activar entorno virtual
 source venv/bin/activate
 
-# BACKTESTING (no necesita credenciales)
-python solana_bot_complete.py backtest --sesiones 10000
+# Modo interactivo (menú)
+./run.sh
 
-# Dry-run mode (simulación)
-python solana_bot_complete.py dryrun
+# Backtesting (sin credenciales)
+./run.sh backtest 10000
 
-# Real mode (⚠️ PELIGRO)
-python solana_bot_complete.py run <WALLET_PUBKEY> --real
-
-# Ver ayuda
-python solana_bot_complete.py --help
+# Trading bot (dry-run por defecto)
+./run.sh run
 ```
+
+### Menú de opciones:
+
+```
+╔══════════════════════════════════════════════════════════╗
+║       🤖 SOLANA MEMECOIN BOT v2.1 — PANEL DE CONTROL  ║
+╠══════════════════════════════════════════════════════════╣
+║                                                          ║
+║  1. 🔵 SIMULACRO — Detecta tokens, sin trades         ║
+║  2. 🔴 REAL      — Trading con SOL real                 ║
+║  3. 📊 BACKTEST  — Simulación histórica                 ║
+║  4. 📋 LOGS      — Ver actividad reciente              ║
+║  5. ⚙️  CONFIG   — Editar configuración (.env)         ║
+║  6. 🛑 DETENER   — Parar bot en background             ║
+║  7. ❌ SALIR                                             ║
+║                                                          ║
+╚══════════════════════════════════════════════════════════╝
+```
+
+---
+
+## ⚙️ Configuración
+
+Edita `.env` con tus credenciales:
+
+```env
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+BIRDEYE_API_KEY=76641762bca44ff68ad89cd254b70e2d
+WALLET_PRIVATE_KEY=4HzcULkg23tbxMXdeTjq5UKAEFYvSs26JupM8kMbCyjXDdN6QjRQZp43cY5Eg6QugEzezTxDpfZedHyxrK7ikYxN
+DRY_RUN=true
+CAPITAL_INICIAL=500
+OBJETIVO_GLOBAL=615
+STOP_LOSS_GLOBAL=100
+```
+
+### ⚠️ Importante
+
+| Campo | Error común | Solución |
+|-------|------------|----------|
+| `BIRDEYE_API_KEY` | Poner la URL | Usar solo la KEY (ej: `76641762bca44...`) |
+| `WALLET_PRIVATE_KEY` | Usar public key | Exportar private key desde Phantom (~88 chars) |
+
+---
+
+## 📦 Dependencias (v2.1)
+
+| Paquete | Estado | Notas |
+|---------|--------|-------|
+| aiohttp==3.14.1 | ✅ Wheel ARM64 | HTTP async |
+| aiohttp-socks==0.11.0 | ✅ Puro Python | SOCKS proxy |
+| base58==2.1.1 | ✅ Puro Python | Codificación base58 |
+| python-dotenv==1.2.2 | ✅ Puro Python | Variables entorno |
+| colorlog==6.10.1 | ✅ Puro Python | Logging con colores |
+| httpx==0.28.1 | ✅ Puro Python | HTTP client |
+| ed25519_pure.py | ✅ Incluido | Firma Ed25519 sin Rust |
+
+**PyNaCl y cryptography son opcionales** — Se usa fallback puro si no están disponibles.
 
 ---
 
@@ -156,19 +113,22 @@ python solana_bot_complete.py --help
 
 ---
 
-## 📁 Estructura del Proyecto
+## 📁 Estructura del Proyecto v2.1
 
 ```
 solana_bot/
-├── solana_bot_complete.py   # Bot principal (ejecutable)
-├── setup_termux.sh          # Instalación rápida (1 comando)
-├── install_termux.sh        # Instalación completa
-├── run.sh                   # Ejecución rápida
-├── requirements.txt         # Dependencias Python
-├── .env.example             # Plantilla de configuración
-├── .env                     # Tu configuración (creado por setup)
-├── README.md                # Este archivo
-└── venv/                    # Entorno virtual (creado por setup)
+├── solana_bot_complete.py   # Bot principal
+├── run.sh                   # Menú interactivo
+├── setup_termux.sh          # Instalación (v2.1)
+├── requirements.txt         # Dependencias verificadas
+├── ed25519_pure.py          # Firma Ed25519 pura Python
+├── wallet.py                # Wallet Solana (fallback)
+├── rpc.py                   # Cliente RPC puro HTTP
+├── jupiter.py               # Jupiter swap API
+├── logger.py                # Logging optimizado Termux
+├── .env                     # Config (creado por setup)
+├── logs/                    # Logs de actividad
+└── venv/                    # Entorno virtual
 ```
 
 ---
