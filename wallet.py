@@ -2,7 +2,52 @@
 # SolanaWallet sin dependencias nativas (solders, PyNaCl)
 # Compatible con Python 3.13 + Android ARM64
 
-import base58
+# Base58 implementation (inline, no requiere paquete externo)
+_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+_BASE58_TABLE = {c: i for i, c in enumerate(_ALPHABET)}
+
+def _base58_encode(data: bytes) -> str:
+    if not data:
+        return ""
+    zeros = sum(1 for b in data if b == 0)
+    num = int.from_bytes(data, 'big')
+    result = []
+    while num > 0:
+        num, rem = divmod(num, 58)
+        result.append(_ALPHABET[rem])
+    return '1' * zeros + ''.join(reversed(result))
+
+def _base58_decode(input_str: str) -> bytes:
+    if not input_str:
+        return b""
+    leading = 0
+    for c in input_str:
+        if c == '1':
+            leading += 1
+        else:
+            break
+    num = 0
+    for c in input_str:
+        if c not in _BASE58_TABLE:
+            raise ValueError(f"Invalid Base58 character: {c}")
+        num = num * 58 + _BASE58_TABLE[c]
+    if num == 0:
+        return b'\x00' * leading
+    hex_str = format(num, 'x')
+    if len(hex_str) % 2:
+        hex_str = '0' + hex_str
+    result = bytes.fromhex(hex_str)
+    return b'\x00' * leading + result
+
+class _Base58:
+    @staticmethod
+    def b58encode(data: bytes) -> str:
+        return _base58_encode(data)
+    @staticmethod
+    def b58decode(encoded: str) -> bytes:
+        return _base58_decode(encoded)
+
+base58 = _Base58()
 
 
 class SolanaWallet:
