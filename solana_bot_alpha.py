@@ -43,76 +43,383 @@ import aiohttp
 
 
 # =============================================
-# SECCIÓN A: CRYPTOGRAFÍA PURA (Ed25519)
-# Sin solders/PyNaCl - Usa cryptography library
+# SECCIÓN A: CRIPTOGRAFÍA PURA (Ed25519)
+# 100% Python - SIN dependencias externas
+# Compatible con: Termux, Python 3.13, Android ARM64
+# Sin cryptography, solders, o PyNaCl
+# =============================================
+
+import hashlib
+import os
+import struct
+from dataclasses import dataclass
+
+
+# =============================================
+# PARTE 1: Base58 (usando biblioteca estándar si disponible)
 # =============================================
 
 try:
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption
-    from cryptography.hazmat.primitives import serialization
-except ImportError:
-    print("ERROR: Instala cryptography: pip install cryptography")
-    sys.exit(1)
-
-try:
+    # Try to use standard base58 library
     import base58
 except ImportError:
-    print("ERROR: Instala base58: pip install base58")
-    sys.exit(1)
+    # Fallback: Pure Python base58 implementation
+    _BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    _BASE58_MAP = {c: i for i, c in enumerate(_BASE58_ALPHABET)}
+
+    def base58_encode(data: bytes) -> str:
+        """Encode bytes to Base58 string"""
+        num = int.from_bytes(data, 'big')
+        encoded = ""
+        while num >= 58:
+            num, rem = divmod(num, 58)
+            encoded = _BASE58_ALPHABET[rem] + encoded
+        encoded = _BASE58_ALPHABET[num] + encoded
+        
+        for byte in data:
+            if byte == 0:
+                encoded = '1' + encoded
+            else:
+                break
+        
+        return encoded
+
+    def base58_decode(encoded: str) -> bytes:
+        """Decode Base58 string to bytes"""
+        num = 0
+        for char in encoded:
+            if char not in _BASE58_MAP:
+                raise ValueError(f"Invalid Base58 character: {char}")
+            num = num * 58 + _BASE58_MAP[char]
+        
+        hex_str = hex(num)[2:]
+        if len(hex_str) % 2:
+            hex_str = '0' + hex_str
+        
+        result = bytes()
+        for char in encoded:
+            if char == '1':
+                result += bytes([0])
+            else:
+                break
+        
+        result += bytes.fromhex(hex_str)
+        return result
+
+    class _Base58Module:
+        b58decode = staticmethod(base58_decode)
+        b58encode = staticmethod(base58_encode)
+
+    base58 = _Base58Module()
 
 
-# --- Base58 Utilities ---
-BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+# =============================================
+# PARTE 2: Pure Python Ed25519 Implementation
+# Based on RFC 8032 - NO external dependencies
+# =============================================
+
+# Edwards curve constants
+P = 2**255 - 19
+N = 2**252 + 27742317777372353535851937790883648493
+I = pow(2, (P - 1) // 4, P)  # Square root of -1
 
 
-def _sha256(data: bytes) -> bytes:
-    return hashlib.sha256(data).digest()
+def egcd(a: int, b: int) -> tuple:
+    """Extended Euclidean algorithm"""
+    if a == 0:
+        return b, 0, 1
+    g, x, y = egcd(b % a, a)
+    return g, y - (b // a) * x, x
 
 
-def _double_sha256(data: bytes) -> bytes:
-    return hashlib.sha256(hashlib.sha256(data).digest()).digest()
+def modinv(a: int, m: int = P) -> int:
+    """Modular inverse using extended Euclidean algorithm"""
+    if a < 0:
+        a = a % m
+    g, x, _ = egcd(a, m)
+    if g != 1:
+        raise ValueError("Modular inverse does not exist")
+    return x % m
 
 
-# --- Keypair Class ---
+# Edwards curve d parameter
+D = pow(-121665 * modinv(121666, P) % P + P, 1, P)
+
+
+def point_add(p1: tuple, p2: tuple) -> tuple:
+    """Add two points on the Edwards curve"""
+    x1, y1 = p1
+    x2, y2 = p2
+    
+    # Identity check
+    if x1 == 0 and y1 == 1:
+        return p2
+    if x2 == 0 and y2 == 1:
+        return p1
+    
+    # Edwards addition
+    t = D * x1 * x2 * y1 * y2 % P
+    x3 = (x1 * y2 + y1 * x2) * modinv(1 + t, P) % P
+    y3 = (y1 * y2 - x1 * x2) * modinv(1 - t, P) % P
+    
+    return (x3, y3)
+
+
+def point_mul(point: tuple, scalar: int) -> tuple:
+    """Multiply point by scalar using double-and-add"""
+    result = (0, 1)  # Identity
+    addend = point
+    
+    while scalar:
+        if scalar & 1:
+            result = point_add(result, addend)
+        addend = point_add(addend, addend)
+        scalar >>= 1
+    
+    return result
+
+
+def encodeint(n: int) -> bytes:
+    """Encode integer to 32 bytes (little-endian)"""
+    return n.to_bytes(32, 'little')
+
+
+def decodeint(data: bytes) -> int:
+    """Decode 32 bytes to integer (little-endian)"""
+    return int.from_bytes(data[:32], 'little')
+
+
+def encode_point(point: tuple) -> bytes:
+    """Encode Edwards point to 32 bytes"""
+    x, y = point
+    # Encode y, then set high bit based on x sign
+    encoded = bytearray(encodeint(y))
+    if x & 1:
+        encoded[31] |= 0x80
+    return bytes(encoded)
+
+
+def decode_point(data: bytes) -> tuple:
+    """Decode 32 bytes to Edwards point"""
+    if len(data) != 32:
+        raise ValueError("Invalid point length")
+    
+    data = bytearray(data)
+    x_0 = (data[31] & 0x80) >> 7  # Sign bit
+    data[31] &= 0x7F
+    
+    y = int.from_bytes(bytes(data), 'little')
+    
+    # Recover x from y using the curve equation
+    # x² = (y² - 1) / (1 + d*y²)
+    y2 = y * y % P
+    u = (y2 - 1) % P
+    v = (1 + D * y2) % P
+    
+    x2 = u * modinv(v, P) % P
+    
+    # Square root
+    x = pow(x2, (P + 3) // 8, P)
+    
+    if (x * x - x2) % P != 0:
+        x = x * I % P
+    
+    if (x * x - x2) % P != 0:
+        raise ValueError("Invalid point: cannot find square root")
+    
+    if (x & 1) != x_0:
+        x = P - x
+    
+    return (x, y)
+
+
+class PureEd25519PrivateKey:
+    """Pure Python Ed25519 Private Key - NO dependencies"""
+    
+    def __init__(self, key_bytes: bytes):
+        if len(key_bytes) != 32:
+            raise ValueError("Private key must be 32 bytes")
+        self._key = key_bytes
+    
+    @classmethod
+    def generate(cls) -> "PureEd25519PrivateKey":
+        return cls(os.urandom(32))
+    
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "PureEd25519PrivateKey":
+        return cls(bytes(data))
+    
+    @classmethod
+    def from_base58(cls, b58: str) -> "PureEd25519PrivateKey":
+        return cls(base58.b58decode(b58))
+    
+    @property
+    def private_bytes(self) -> bytes:
+        return self._key
+    
+    def private_bytes_base58(self) -> str:
+        return base58.b58encode(self._key).decode('ascii')
+    
+    def public_key(self) -> "PureEd25519PublicKey":
+        """Derive public key from private key"""
+        # Hash private key with SHA-512
+        h = hashlib.sha512(self._key).digest()
+        
+        # Clamp scalar
+        s = int.from_bytes(h[:32], 'little')
+        s &= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC
+        s |= 0x4000000000000000000000000000000000000000000000000000000000000000
+        
+        # Base point
+        BASE = (4 * modinv(5, P) % P, (BASE_Y * modinv(BASE_X, P) + 1) % P)
+        # Simpler: use the standard base
+        Gx = 15112221349535400772501151409588531511454012693041857206046113283949847762202
+        Gy = 46316835694926478169428394003475163141307993866256225615783033603165251855960
+        BASE = (Gx, Gy)
+        
+        # Multiply
+        point = point_mul(BASE, s)
+        
+        return PureEd25519PublicKey(encode_point(point))
+    
+    def sign(self, message: bytes) -> bytes:
+        """Sign message with Ed25519"""
+        # Get public key
+        A = self.public_key()
+        A_bytes = A.raw_bytes
+        
+        # Hash private key for nonce derivation
+        h = hashlib.sha512(self._key).digest()
+        
+        # Nonce
+        r = int.from_bytes(hashlib.sha512(h[32:] + message).digest(), 'little') % N
+        
+        # R point
+        BASE = (15112221349535400772501151409588531511454012693041857206046113283949847762202,
+                46316835694926478169428394003475163141307993866256225615783033603165251855960)
+        R = point_mul(BASE, r)
+        R_bytes = encode_point(R)
+        
+        # Challenge
+        challenge = int.from_bytes(hashlib.sha512(R_bytes + A_bytes + message).digest(), 'little') % N
+        
+        # Response
+        s = (r + challenge * int.from_bytes(h[:32], 'little')) % N
+        
+        return R_bytes + encodeint(s)
+
+
+class PureEd25519PublicKey:
+    """Pure Python Ed25519 Public Key - NO dependencies"""
+    
+    def __init__(self, raw_bytes: bytes):
+        if len(raw_bytes) != 32:
+            raise ValueError("Public key must be 32 bytes")
+        self._key = raw_bytes
+        self._point = decode_point(raw_bytes)
+    
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "PureEd25519PublicKey":
+        return cls(bytes(data))
+    
+    @classmethod
+    def from_base58(cls, b58: str) -> "PureEd25519PublicKey":
+        return cls(base58.b58decode(b58))
+    
+    @property
+    def raw_bytes(self) -> bytes:
+        return self._key
+    
+    def verify(self, signature: bytes, message: bytes) -> bool:
+        """Verify Ed25519 signature"""
+        if len(signature) != 64:
+            return False
+        
+        try:
+            R_bytes = signature[:32]
+            s = decodeint(signature[32:])
+            
+            if s >= N:
+                return False
+            
+            A = self._point
+            BASE = (15112221349535400772501151409588531511454012693041857206046113283949847762202,
+                    46316835694926478169428394003475163141307993866256225615783033603165251855960)
+            
+            R = decode_point(R_bytes)
+            
+            challenge = int.from_bytes(hashlib.sha512(R_bytes + self._key + message).digest(), 'little') % N
+            
+            # s*B = R + a*A
+            left = point_mul(BASE, s)
+            right = point_add(R, point_mul(A, challenge))
+            
+            return left == right
+        except Exception:
+            return False
+
+
+# =============================================
+# PARTE 3: Try to use cryptography, fallback to pure Python
+# =============================================
+
+USE_CRYPTOGRAPHY = False
+
+try:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey as CryptoEd25519
+    from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption
+    USE_CRYPTOGRAPHY = True
+except ImportError:
+    pass  # Use pure Python
+
+
+# =============================================
+# PARTE 4: Keypair Class (unified interface)
+# =============================================
+
 @dataclass
 class Keypair:
-    """Ed25519 Keypair para Solana - 100% Python"""
-    private_key: bytes  # 32 bytes
-    public_key: bytes    # 32 bytes
+    """Ed25519 Keypair - auto-detects best implementation"""
+    private_key: bytes
+    public_key: bytes
     
     @classmethod
     def generate(cls) -> "Keypair":
-        """Genera nuevo keypair Ed25519"""
-        ed25519_key = Ed25519PrivateKey.generate()
-        private_bytes = ed25519_key.private_bytes(
-            encoding=Encoding.Raw,
-            format=PrivateFormat.Raw,
-            encryption_algorithm=NoEncryption()
-        )
-        public_bytes = ed25519_key.public_key().public_bytes(
-            encoding=Encoding.Raw,
-            format=PublicFormat.Raw
-        )
-        return cls(private_key=private_bytes, public_key=public_bytes)
+        """Generate new keypair"""
+        if USE_CRYPTOGRAPHY:
+            crypto_key = CryptoEd25519.generate()
+            priv = crypto_key.private_bytes(
+                encoding=Encoding.Raw,
+                format=PrivateFormat.Raw,
+                encryption_algorithm=NoEncryption()
+            )
+            pub = crypto_key.public_key().public_bytes(
+                encoding=Encoding.Raw,
+                format=PublicFormat.Raw
+            )
+        else:
+            pure_key = PureEd25519PrivateKey.generate()
+            priv = pure_key.private_bytes
+            pub = pure_key.public_key().raw_bytes
+        return cls(private_key=priv, public_key=pub)
     
     @classmethod
-    def from_base58(cls, private_key_b58: str) -> "Keypair":
-        """Crea Keypair desde clave privada Base58"""
-        try:
-            private_bytes = base58.b58decode(private_key_b58)
-        except Exception as e:
-            raise ValueError(f"Clave privada inválida: {e}")
+    def from_base58(cls, b58_key: str) -> "Keypair":
+        """Create from Base58 private key"""
+        priv = base58.b58decode(b58_key)
+        if len(priv) != 32:
+            raise ValueError(f"Invalid key length: {len(priv)}")
         
-        if len(private_bytes) != 32:
-            raise ValueError(f"La clave debe ser 32 bytes, recibidos {len(private_bytes)}")
-        
-        ed25519_key = Ed25519PrivateKey.from_private_bytes(private_bytes)
-        public_bytes = ed25519_key.public_key().public_bytes(
-            encoding=Encoding.Raw,
-            format=PublicFormat.Raw
-        )
-        return cls(private_key=private_bytes, public_key=public_bytes)
+        if USE_CRYPTOGRAPHY:
+            crypto_key = CryptoEd25519.from_private_bytes(priv)
+            pub = crypto_key.public_key().public_bytes(
+                encoding=Encoding.Raw,
+                format=PublicFormat.Raw
+            )
+        else:
+            pure_key = PureEd25519PrivateKey(priv)
+            pub = pure_key.public_key().raw_bytes
+        return cls(private_key=priv, public_key=pub)
     
     @property
     def private_key_base58(self) -> str:
@@ -127,16 +434,24 @@ class Keypair:
         return self.public_key_base58
     
     def sign(self, message: bytes) -> bytes:
-        """Firma mensaje con Ed25519 - retorna 64 bytes"""
-        ed25519_key = Ed25519PrivateKey.from_private_bytes(self.private_key)
-        return ed25519_key.sign(message)
+        """Sign message with Ed25519"""
+        if USE_CRYPTOGRAPHY:
+            crypto_key = CryptoEd25519.from_private_bytes(self.private_key)
+            return crypto_key.sign(message)
+        else:
+            pure_key = PureEd25519PrivateKey(self.private_key)
+            return pure_key.sign(message)
     
     def verify(self, message: bytes, signature: bytes) -> bool:
-        """Verifica firma Ed25519"""
+        """Verify Ed25519 signature"""
         try:
-            ed25519_key = Ed25519PrivateKey.from_private_bytes(self.private_key)
-            ed25519_key.public_key().verify(signature, message)
-            return True
+            if USE_CRYPTOGRAPHY:
+                crypto_key = CryptoEd25519.from_private_bytes(self.private_key)
+                crypto_key.public_key().verify(signature, message)
+                return True
+            else:
+                pub_key = PureEd25519PublicKey(self.public_key)
+                return pub_key.verify(signature, message)
         except Exception:
             return False
 

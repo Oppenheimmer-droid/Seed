@@ -5,20 +5,15 @@
 python-dotenv>=1.0.0
 colorlog>=6.8.0
 
-# Async HTTP
+# Async HTTP (required for DexScreener API)
 aiohttp>=3.9.0
-aiohttp-socks>=0.8.0
 
-# Cryptography (Ed25519 signing) - Python 3.13 + Android ARM64 compatible
-# Replaces solders/PyNaCl which require native C/Rust extensions
-# cryptography uses Rust via maturin - has pre-built wheels
-cryptography>=42.0.0
-base58>=2.1.1
+# NOTE: cryptography, solders, PyNaCl are NOT required!
+# This bot uses PURE PYTHON Ed25519 implementation
+# Works on Python 3.13 + Android ARM64 without compilation
 
-# Solana SDK (optional - for advanced features)
-# Old method required: pkg install rust cargo clang make
-# New: cryptography library is standalone
-# solders>=0.18.0  # (optional, not required)
+# Optional: If you want faster Ed25519, install cryptography (requires Rust)
+# pip install cryptography  # Only if you have Rust installed
 
 # Testing (optional)
 pytest>=7.4.0
