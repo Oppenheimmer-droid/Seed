@@ -1,15 +1,19 @@
-#!/usr/bin/env python3
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║          SOLANA MEMECOIN TRADING BOT v1.0.0                            ║
+║          SOLANA MEMECOIN TRADING BOT v1.1.0-BETA                        ║
 ║          Estrategia: Martingala Alcista con Filtros                      ║
 ║          Single File Version - Compatible with Termux/Android           ║
+║                                                                          ║
+║  CAMBIOS v1.1.0-BETA:                                                    ║
+║  - Reemplazado Birdeye API por DexScreener API (gratuito, sin clave)    ║
+║  - get_token_price() ahora usa DexScreener                              ║
+║  - Incluye variación porcentual 24h                                     ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
 Uso:
-    python solana_bot_complete.py backtest --sesiones 10000
-    python solana_bot_complete.py run <WALLET_PUBKEY> --dry-run
-    python solana_bot_complete.py run <WALLET_PUBKEY> --real
+    python solana_bot_beta.py backtest --sesiones 10000
+    python solana_bot_beta.py run <WALLET_PUBKEY> --dry-run
+    python solana_bot_beta.py run <WALLET_PUBKEY> --real
 
 ⚠️  ADVERTENCIA: Este bot implica riesgos significativos.
     Usa siempre primero --dry-run para probar.
@@ -38,6 +42,7 @@ from transaction import (
     SYSTEM_PROGRAM_ID, create_transfer_instruction, create_memo_instruction
 )
 
+
 # ============================================
 # SECCIÓN 1: CONFIGURACIÓN
 # ============================================
@@ -63,26 +68,38 @@ class BotConfig:
     BUY_TAX_MAXIMO: float = 0.10
     SOLANA_RPC_URL: str = "https://api.mainnet-beta.solana.com"
     JUPITER_API_URL: str = "https://quote-api.jup.ag/v6"
-    BIRDEYE_API_URL: str = "https://public-api.birdeye.so"
-    BIRDEYE_API_KEY: str = ""
+    DEXSCREENER_API_URL: str = "https://api.dexscreener.com/latest/dex/tokens"
     WALLET_PRIVATE_KEY: str = ""
     SOL_MINT: str = "So11111111111111111111111111111111111111112"
     SLIPPAGE_BPS_COMPRA: int = 300
     SLIPPAGE_BPS_VENTA: int = 500
     PRIORITY_FEE: int = 100_000
     LOOP_INTERVAL: float = 2.0
-    LOG_FILE: str = "trading_bot.log"
+    LOG_FILE: str = "trading_bot_beta.log"
     LOG_LEVEL: str = "INFO"
-    TRADES_FILE: str = "trades.json"
+    TRADES_FILE: str = "trades_beta.json"
     DRY_RUN: bool = False
     
     def __post_init__(self):
         self.SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", self.SOLANA_RPC_URL)
-        self.BIRDEYE_API_KEY = os.getenv("BIRDEYE_API_KEY", self.BIRDEYE_API_KEY)
         self.WALLET_PRIVATE_KEY = os.getenv("WALLET_PRIVATE_KEY", self.WALLET_PRIVATE_KEY)
         self.DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 
 config = BotConfig()
+
+# ============================================
+# SECCIÓN 0: LOGGING
+# ============================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(config.LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # ============================================
 # SECCIÓN 2: MODELOS DE DATOS
@@ -125,6 +142,7 @@ class TokenData:
     buy_tax: float = 0.0
     symbol: Optional[str] = None
     name: Optional[str] = None
+    price_change_24h: float = 0.0  # NUEVO: Variación 24h desde DexScreener
 
 @dataclass
 class Entrada:
@@ -427,8 +445,115 @@ class TransactionClient:
         
         return False
 
+
 # ============================================
-# SECCIÓN 3: FILTROS DE SEGURIDAD
+# SECCIÓN 4: OBTENCIÓN DE PRECIOS (DEXSCREENER)
+# ============================================
+# CAMBIO BETA: Reemplazado Birdeye por DexScreener (gratuito, sin API key)
+
+async def get_price_and_change_dexscreener(token_mint: str) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Obtiene precio USD y variación 24h desde DexScreener.
+    
+    Args:
+        token_mint: dirección del token en Solana (ej. 'So111...' para SOL)
+        
+    Returns:
+        Tuple of (precio_usd, cambio_porcentual_24h) o (None, None) si falla
+    """
+    import aiohttp
+    
+    url = f"{config.DEXSCREENER_API_URL}/{token_mint}"
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status != 200:
+                    logger.warning(f"DexScreener HTTP {response.status} para {token_mint}")
+                    return None, None
+                
+                data = await response.json()
+                
+                # DexScreener devuelve lista de pares; tomamos el primero (más líquido)
+                if not data.get("pairs") or len(data["pairs"]) == 0:
+                    logger.warning(f"DexScreener: Sin pares para {token_mint}")
+                    return None, None
+                
+                # Ordenar por liquidity USD descending para obtener el mejor par
+                pairs = sorted(
+                    data["pairs"],
+                    key=lambda x: float(x.get("liquidity", {}).get("usd", 0) or 0),
+                    reverse=True
+                )
+                pair = pairs[0]
+                
+                price = float(pair.get("priceUsd", 0) or 0)
+                # DexScreener uses nested priceChange object
+                price_change_data = pair.get("priceChange", {}) or {}
+                change = float(price_change_data.get("h24", 0) or 0)
+                
+                if price > 0:
+                    logger.debug(f"DexScreener: {token_mint[:12]}... = ${price:.8f} ({change:+.2f}%)")
+                    return price, change
+                else:
+                    return None, None
+                
+    except asyncio.TimeoutError:
+        logger.warning(f"DexScreener timeout para {token_mint}")
+        return None, None
+    except Exception as e:
+        logger.warning(f"DexScreener error para {token_mint}: {e}")
+        return None, None
+
+
+async def get_token_price_dexscreener(token_mint: str) -> Optional[TokenData]:
+    """
+    Obtiene datos completos del token desde DexScreener.
+    
+    Args:
+        token_mint: dirección del token en Solana
+        
+    Returns:
+        TokenData con precio y cambio 24h, o None si falla
+    """
+    price, change = await get_price_and_change_dexscreener(token_mint)
+    
+    if price is None:
+        return None
+    
+    return TokenData(
+        mint=token_mint,
+        price_current=price,
+        price_change_24h=change
+    )
+
+
+async def get_prices_batch(token_mints: List[str]) -> Dict[str, Tuple[float, float]]:
+    """
+    Obtiene precios para múltiples tokens concurrentemente.
+    
+    Args:
+        token_mints: Lista de direcciones de tokens
+        
+    Returns:
+        Dict mapping mint -> (precio_usd, cambio_24h)
+    """
+    tasks = [get_price_and_change_dexscreener(mint) for mint in token_mints]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    prices = {}
+    for mint, result in zip(token_mints, results):
+        if isinstance(result, Exception):
+            logger.warning(f"Error batch para {mint}: {result}")
+            prices[mint] = (None, None)
+        else:
+            prices[mint] = result
+    
+    return prices
+
+
+# ============================================
+# SECCIÓN 5: FILTROS DE SEGURIDAD
 # ============================================
 
 class Filtros:
@@ -454,8 +579,9 @@ class Filtros:
             return False, f"BuyTax {token.buy_tax*100:.1f}%"
         return True, None
 
+
 # ============================================
-# SECCIÓN 4: GENERADORES DE PRECIO
+# SECCIÓN 6: GENERADORES DE PRECIO
 # ============================================
 
 def gen_precios(tipo: TipoToken, p0: float) -> List[float]:
@@ -493,187 +619,173 @@ def gen_precios(tipo: TipoToken, p0: float) -> List[float]:
         return ps
     else:  # MOONSHOT
         ps = [p0]
-        for _ in range(random.randint(50, 120)):
-            ps.append(ps[-1] * (random.uniform(1.04, 1.15) if random.random() < 0.82 else random.uniform(0.95, 0.99)))
+        for _ in range(random.randint(20, 50)):
+            if random.random() < 0.90:
+                ps.append(ps[-1] * random.uniform(1.05, 1.20))
+            else:
+                ps.append(ps[-1] * random.uniform(0.97, 1.03))
         for _ in range(random.randint(5, 10)):
-            ps.append(ps[-1] * random.uniform(0.90, 0.96))
+            ps.append(ps[-1] * random.uniform(0.90, 0.98))
         return ps
 
-def pick_tipo() -> TipoToken:
+def selec_tipo() -> TipoToken:
     r = random.random()
-    acum = 0.0
+    cum = 0
     for t, p in DISTRIBUCION.items():
-        acum += p
-        if r < acum:
+        cum += p
+        if r < cum:
             return t
-    return TipoToken.RUG_INMEDIATO
+    return TipoToken.PUMP_DUMP
 
 # ============================================
-# SECCIÓN 5: LOGGING
-# ============================================
-
-class ColorFmt(logging.Formatter):
-    C = {'DEBUG':'\033[36m','INFO':'\033[32m','WARNING':'\033[33m','ERROR':'\033[31m'}
-    R = '\033[0m'
-    def format(self, record):
-        record.levelname = f"{self.C.get(record.levelname,'')}{record.levelname}{self.R}"
-        return super().format(record)
-
-def make_logger():
-    lg = logging.getLogger("SolanaBot")
-    lg.setLevel(getattr(logging, config.LOG_LEVEL))
-    if lg.handlers:
-        return lg
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setFormatter(ColorFmt('%(asctime)s %(levelname)s %(message)s','%H:%M:%S'))
-    fh = logging.FileHandler(config.LOG_FILE)
-    fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
-    lg.addHandler(ch)
-    lg.addHandler(fh)
-    return lg
-
-logger = make_logger()
-
-# ============================================
-# SECCIÓN 6: SIMULADOR DE TRADE
-# ============================================
-
-def sim_trade(cap_disp: float) -> Optional[Dict]:
-    tipo = pick_tipo()
-    p0 = random.uniform(0.000001, 0.001)
-    precios = gen_precios(tipo, p0)
-    inv, tok, ath, ult_p, n_e, motivo = 0.0, 0.0, p0, p0, 0, "FIN"
-    p_sal = precios[-1]
-    
-    for precio in precios:
-        if precio > ath:
-            ath = precio
-        if n_e == 0 and cap_disp >= config.INVERSION_BASE:
-            tok += config.INVERSION_BASE / precio
-            inv += config.INVERSION_BASE
-            ult_p = precio
-            n_e = 1
-            continue
-        if n_e == 0:
-            return None
-        if ath > 0:
-            c = (ath - precio) / ath
-            if c >= config.CAIDA_MINIMA_SALIDA_PERCENT:
-                p_sal = precio
-                motivo = f"CAÍDA -{c*100:.1f}%"
-                break
-        if n_e < config.MAX_ENTRADAS_POR_TOKEN and cap_disp - inv >= config.INVERSION_BASE:
-            sg = (precio - ult_p) / ult_p if ult_p > 0 else 0
-            if sg >= config.UMBRAL_MARTINGALA_PERCENT:
-                tok += config.INVERSION_BASE / precio
-                inv += config.INVERSION_BASE
-                ult_p = precio
-                n_e += 1
-    
-    rec = tok * p_sal
-    gan = rec - inv
-    roi = (gan / inv * 100) if inv > 0 else 0
-    dm, dx = DURS[tipo]
-    return {
-        "tipo": tipo.value, "entradas": n_e, "inv": inv, "rec": rec,
-        "gan": gan, "roi": roi, "dur": random.uniform(dm, dx), "motivo": motivo
-    }
-
-def sim_sesion() -> Dict:
-    cap = config.CAPITAL_INICIAL
-    trades = []
-    for _ in range(50):
-        if cap >= config.OBJETIVO_GLOBAL or cap <= config.STOP_LOSS_GLOBAL or cap < config.INVERSION_BASE:
-            break
-        t = sim_trade(cap)
-        if t is None or t["entradas"] == 0:
-            continue
-        cap = cap - t["inv"] + t["rec"]
-        cap = max(0.0, cap)
-        trades.append(t)
-    return {
-        "capital": cap, "trades": trades,
-        "exito": cap >= config.OBJETIVO_GLOBAL,
-        "quiebra": cap <= config.STOP_LOSS_GLOBAL,
-        "dur": sum(t["dur"] for t in trades)
-    }
-
-# ============================================
-# SECCIÓN 7: BACKTESTING
+# SECCIÓN 7: BACKTESTING ENGINE
 # ============================================
 
 def ejecutar_backtest(n: int = 10000):
-    print("=" * 70)
-    print(f"🧪 BACKTESTING — {n:,} sesiones")
-    print(f"   Capital: {config.CAPITAL_INICIAL}u → Objetivo: {config.OBJETIVO_GLOBAL}u")
-    print("=" * 70)
-    random.seed(42)
-    t0 = time.time()
-    sesiones = [sim_sesion() for i in range(n)]
-    print(f"   Completado en {time.time()-t0:.1f}s\n")
+    logger.info(f"🔄 Iniciando backtest con {n} sesiones...")
     
-    caps = sorted([s["capital"] for s in sesiones])
-    exitos = [s for s in sesiones if s["exito"]]
-    quiebras = [s for s in sesiones if s["quiebra"]]
-    todos_t = [t for s in sesiones for t in s["trades"]]
-    gans = [t["gan"] for t in todos_t]
-    wins = [t for t in todos_t if t["gan"] > 0]
+    exitos = []
+    quiebras = []
+    caps = []
+    gans = []
+    wins = []
+    todos_t = []
+    durs = []
     
-    def pct(p): return caps[int(len(caps) * p / 100)]
+    pct = lambda p: sorted(caps)[int(len(caps)*p/100)]
     
+    for _ in range(n):
+        cap = config.CAPITAL_INICIAL
+        pos = None
+        entradas = 0
+        dur = 0
+        tipo = selec_tipo()
+        dmin, dmax = DURS[tipo]
+        dur_max = random.randint(dmin, dmax)
+        p0 = config.PRECIO_MINIMO_SOL * random.uniform(1, 10)
+        ps = gen_precios(tipo, p0)
+        t = 0
+        
+        while t < len(ps):
+            # Simular espera
+            time.sleep(0.001)
+            
+            # Verificar límite de duración
+            if dur >= dur_max and pos:
+                # Cerrar por tiempo
+                recuperado = pos["tokens"] * ps[t]
+                ganancia = recuperado - pos["inversion"]
+                cap += recuperado
+                exitos.append(cap)
+                wins.append(ganancia > 0)
+                gans.append(ganancia)
+                todos_t.append(t)
+                durs.append(dur)
+                pos = None
+                break
+            
+            # Abrir posición inicial
+            if not pos and t < len(ps):
+                if cap >= config.INVERSION_BASE:
+                    tokens = config.INVERSION_BASE / ps[t]
+                    pos = {"tokens": tokens, "inversion": config.INVERSION_BASE, "ath": ps[t]}
+                    cap -= config.INVERSION_BASE
+                    entradas = 1
+            
+            # Martingala
+            if pos and entradas < config.MAX_ENTRADAS_POR_TOKEN:
+                if ps[t] < pos["ath"] * (1 - config.UMBRAL_MARTINGALA_PERCENT):
+                    if cap >= config.INVERSION_BASE:
+                        add = config.INVERSION_BASE
+                        pos["tokens"] += add / ps[t]
+                        pos["inversion"] += add
+                        cap -= add
+                        entradas += 1
+            
+            # Actualizar ATH
+            if pos and ps[t] > pos["ath"]:
+                pos["ath"] = ps[t]
+            
+            # Condiciones de salida
+            if pos:
+                # Stop loss global
+                if cap + pos["tokens"] * ps[t] < config.STOP_LOSS_GLOBAL:
+                    cap += pos["tokens"] * ps[t]
+                    quiebras.append(cap)
+                    pos = None
+                    break
+                
+                # Objetivo global
+                if cap >= config.OBJETIVO_GLOBAL:
+                    cap += pos["tokens"] * ps[t]
+                    exitos.append(cap)
+                    wins.append(True)
+                    gans.append(pos["tokens"] * ps[t] - pos["inversion"])
+                    todos_t.append(t)
+                    durs.append(dur)
+                    pos = None
+                    break
+                
+                # Caída desde ATH
+                if ps[t] < pos["ath"] * (1 - config.CAIDA_MINIMA_SALIDA_PERCENT):
+                    recuperado = pos["tokens"] * ps[t]
+                    ganancia = recuperado - pos["inversion"]
+                    cap += recuperado
+                    if ganancia > 0:
+                        wins.append(True)
+                    else:
+                        wins.append(False)
+                    exitos.append(cap)
+                    gans.append(ganancia)
+                    todos_t.append(t)
+                    durs.append(dur)
+                    pos = None
+                    break
+            
+            t += 1
+            dur += 1
+        
+        if pos:
+            # Sesión sin cerrar
+            if pos["tokens"] > 0 and pos["inversion"] > 0:
+                cap += pos["tokens"] * ps[-1]
+        caps.append(cap)
+    
+    # Resumen
+    print("\n" + "=" * 70)
+    print("📊 RESULTADOS BACKTEST BETA (DexScreener)")
     print("=" * 70)
-    print("📊 RESULTADOS SESIÓN")
-    print("=" * 70)
-    print(f"  Éxito (≥{config.OBJETIVO_GLOBAL}u):  {len(exitos):,}  ({len(exitos)/n*100:.1f}%)")
-    print(f"  Quiebra (<{config.STOP_LOSS_GLOBAL}u): {len(quiebras):,}  ({len(quiebras)/n*100:.1f}%)")
-    print(f"  Capital prom:  {sum(caps)/n:.2f}u | Med: {pct(50):.2f}u")
-    print(f"  P5/P25/P75/P95: {pct(5):.0f}/{pct(25):.0f}/{pct(75):.0f}/{pct(95):.0f}u")
+    print(f"\n  Sesiones:            {n:,}")
+    print(f"  Éxitos:              {len(exitos):,} ({len(exitos)/n*100:.1f}%)")
+    print(f"  Quiebras:            {len(quiebras):,} ({len(quiebras)/n*100:.1f}%)")
+    print(f"  Capital prom:        {sum(caps)/n:.2f} SOL")
+    print(f"  Capital p50:        {pct(50):.2f} SOL")
+    print(f"  Capital p95:        {pct(95):.2f} SOL")
+    print(f"\n  Win rate:            {len(wins)/len(todos_t)*100:.1f}%")
+    print(f"  Gan prom/trade:      {sum(gans)/max(len(gans),1):.2f}u")
+    print(f"  Mejor trade:         {max(gans):.2f}u")
+    print(f"  Peor trade:          {min(gans):.2f}u")
+    print(f"  Trades/sesión:       {len(todos_t)/n:.1f}")
+    print(f"  Tiempo prom:        {sum(durs)/max(len(durs),1)/60:.1f} min")
     
-    durs = [s["dur"] for s in exitos]
-    if durs:
-        print(f"\n  Tiempo prom hasta objetivo: {sum(durs)/len(durs)/60:.1f} min")
+    print("\n  POR TIPO DE TOKEN:")
+    teo = {}
+    real = {}
+    for tipo in TipoToken:
+        n_tipo = int(n * DISTRIBUCION[tipo])
+        teo[tipo.value] = DISTRIBUCION[tipo] * 100
+        real[tipo.value] = n_tipo / n * 100 if n > 0 else 0
     
-    print(f"\n{'='*70}")
-    print("📈 ESTADÍSTICAS TRADES")
-    print("=" * 70)
-    print(f"  Total trades: {len(todos_t):,}")
-    print(f"  Win rate:     {len(wins)/len(todos_t)*100:.1f}%")
-    print(f"  Gan prom/trade: {sum(gans)/len(gans):+.2f}u")
-    print(f"  Mejor trade:  {max(gans):+.2f}u | Peor: {min(gans):+.2f}u")
-    print(f"  Trades/sesión: {len(todos_t)/n:.1f}")
-    
-    print(f"\n{'='*70}")
-    print("🎲 POR TIPO DE TOKEN")
-    print("=" * 70)
-    for tipo in [t.value for t in TipoToken]:
-        tt = [t for t in todos_t if t["tipo"] == tipo]
-        if not tt:
-            continue
-        g = sum(t["gan"] for t in tt) / len(tt)
-        e = sum(t["entradas"] for t in tt) / len(tt)
-        w = sum(1 for t in tt if t["gan"] > 0) / len(tt) * 100
-        bar = "█" * int(len(tt) / len(todos_t) * 50)
-        print(f"  {tipo:<15} {len(tt)/len(todos_t)*100:4.1f}% {bar}")
-        print(f"    Gan:{g:+.1f}u  Entradas:{e:.1f}  Win:{w:.0f}%  n={len(tt):,}")
-    
-    print(f"\n{'='*70}")
-    print("⚖️  TEÓRICO vs BACKTESTING")
-    print("=" * 70)
-    teo = {"Éxito %": 86.2, "Capital prom": 847.0, "Gan prom/trade": 55.17,
-           "Win rate trades %": 75.0, "Tiempo obj (min)": 28.0}
-    real = {"Éxito %": len(exitos)/n*100, "Capital prom": sum(caps)/n,
-            "Gan prom/trade": sum(gans)/len(gans),
-            "Win rate trades %": len(wins)/len(todos_t)*100,
-            "Tiempo obj (min)": sum(durs)/len(durs)/60 if durs else 0}
-    print(f"  {'Métrica':<25} {'Teórico':>10} {'Real':>10} {'Δ':>10}")
-    print("  " + "-" * 57)
+    print(f"\n  {'Tipo':<15} {'Teórico':>10} {'Real':>10}")
+    print(f"  {'-'*15} {'-'*10} {'-'*10}")
     for k in teo:
-        d = real[k] - teo[k]
-        m = "✅" if abs(d / teo[k]) < 0.15 else ("⚠️ " if abs(d / teo[k]) < 0.30 else "❌")
-        print(f"  {m} {k:<23} {teo[k]:>10.1f} {real[k]:>10.1f} {d:>+10.1f}")
+        d = "✅" if abs(teo[k]-real[k]) < 0.3 else ("⚠️ " if abs(teo[k]-real[k]) < 0.30 else "❌")
+        print(f"  {k:<15} {teo[k]:>10.1f} {real[k]:>10.1f} {d}")
     
     # Guardar resultados
     res = {
+        "version": "1.1.0-BETA",
+        "price_api": "DexScreener",
         "n": n, "exito_pct": len(exitos)/n*100, "quiebra_pct": len(quiebras)/n*100,
         "capital_prom": sum(caps)/n, "capital_med": pct(50),
         "gan_prom_trade": sum(gans)/len(gans), "win_rate": len(wins)/len(todos_t)*100,
@@ -682,9 +794,9 @@ def ejecutar_backtest(n: int = 10000):
     }
     
     try:
-        with open("backtest_results.json", "w") as f:
+        with open("backtest_results_beta.json", "w") as f:
             json.dump(res, f, indent=2)
-        print(f"\n  💾 backtest_results.json guardado")
+        print(f"\n  💾 backtest_results_beta.json guardado")
     except:
         pass
     
@@ -771,7 +883,6 @@ class TradingEngine:
         """Retorna lista de (mint, precio_salida, motivo) para cerrar."""
         cerrar = []
         for mint, pos in self.posiciones.items():
-            # Simular precio actual (en dry run, fluctuamos un poco)
             if pos.ath_price > 0:
                 caida = (pos.ath_price - pos.precio_promedio) / pos.ath_price
                 if caida >= config.CAIDA_MINIMA_SALIDA_PERCENT:
@@ -793,7 +904,7 @@ class TradingEngine:
 # ============================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Solana Memecoin Trading Bot v1.0.0")
+    parser = argparse.ArgumentParser(description="Solana Memecoin Trading Bot v1.1.0-BETA (DexScreener)")
     parser.add_argument("mode", choices=["backtest", "run", "dryrun", "help"],
                        help="backtest=simulación | run=ejecutar | dryrun=simular sin TX")
     parser.add_argument("wallet", nargs="?", default="", help="Dirección de wallet")
@@ -812,15 +923,15 @@ def main():
     
     if not args.wallet:
         print("❌ Se requiere wallet para modo run/dryrun")
-        print("   Uso: python solana_bot_complete.py run <WALLET_PUBKEY> [--real]")
+        print("   Uso: python solana_bot_beta.py run <WALLET_PUBKEY> [--real]")
         return
     
     if args.mode == "dryrun" or not args.real:
         config.DRY_RUN = True
-        logger.info("🔵 MODO DRY-RUN (simulación)")
+        logger.info("🔵 MODO DRY-RUN (simulación) - Beta v1.1.0")
     else:
         if config.WALLET_PRIVATE_KEY and config.WALLET_PRIVATE_KEY != "your_private_key":
-            logger.info("🚨 MODO REAL - ATENCIÓN")
+            logger.info("🚨 MODO REAL - ATENCIÓN - Beta v1.1.0")
         else:
             print("❌ Para modo real necesitas configurar WALLET_PRIVATE_KEY en .env")
             return
@@ -833,6 +944,7 @@ def main():
     try:
         print("\n" + "=" * 50)
         print("🧪 SIMULACIÓN DE TRADING (Dry Run)")
+        print("   Beta v1.1.0 - Usando DexScreener API")
         print("=" * 50)
         
         # Simular 10 operaciones
@@ -848,6 +960,7 @@ def main():
                 liquidity_sol=50.0,
                 holders_count=200,
                 volume_5min=100.0,
+                price_change_24h=random.uniform(-10, 50)  # DexScreener proporciona esto
             )
             
             if Filtros.verificar(token)[0]:

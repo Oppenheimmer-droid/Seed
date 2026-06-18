@@ -1,7 +1,7 @@
-# Solana Memecoin Trading Bot - Dependencies
+# Solana Memecoin Trading Bot v2.0.0-ALPHA - Dependencies
 # Install with: pip install -r requirements.txt
 
-# Core - sin pydantic (no tiene wheel para Termux/Python 3.13)
+# Core
 python-dotenv>=1.0.0
 colorlog>=6.8.0
 
@@ -9,12 +9,16 @@ colorlog>=6.8.0
 aiohttp>=3.9.0
 aiohttp-socks>=0.8.0
 
-# Solana SDK (optional - for real trading)
-# Install separately on Termux: pkg install rust cargo clang make
-# Then: pip install solders solana base58
-# solders>=0.18.0
-# solana>=0.30.0
-# base58>=2.1.1
+# Cryptography (Ed25519 signing) - Python 3.13 + Android ARM64 compatible
+# Replaces solders/PyNaCl which require native C/Rust extensions
+# cryptography uses Rust via maturin - has pre-built wheels
+cryptography>=42.0.0
+base58>=2.1.1
+
+# Solana SDK (optional - for advanced features)
+# Old method required: pkg install rust cargo clang make
+# New: cryptography library is standalone
+# solders>=0.18.0  # (optional, not required)
 
 # Testing (optional)
 pytest>=7.4.0
