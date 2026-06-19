@@ -1,19 +1,23 @@
-# Solana Memecoin Trading Bot v2.0.0-ALPHA - Dependencies
+# Solana Memecoin Trading Bot v0.2 - Dependencies
 # Install with: pip install -r requirements.txt
+# Compatible con Python 3.13 + Android ARM64 (sin compilación Rust/C)
 
-# Core
+# Core - Puro Python
 python-dotenv>=1.0.0
 colorlog>=6.8.0
 
-# Async HTTP (required for DexScreener API)
+# Async HTTP
 aiohttp>=3.9.0
+aiohttp-socks>=0.8.0
 
-# NOTE: cryptography, solders, PyNaCl are NOT required!
-# This bot uses PURE PYTHON Ed25519 implementation
-# Works on Python 3.13 + Android ARM64 without compilation
+# Criptografía - Ed25519 para firma de transacciones (wheel Android disponible)
+cryptography>=42.0.0
 
-# Optional: If you want faster Ed25519, install cryptography (requires Rust)
-# pip install cryptography  # Only if you have Rust installed
+# Encoding
+base58>=2.1.1
+
+# HTTP sync/async alternativo
+httpx>=0.28.0
 
 # Testing (optional)
 pytest>=7.4.0
