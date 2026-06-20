@@ -53,6 +53,16 @@ except ImportError as e:
     def validar_configuracion(config): return []
     UTILITIES_OK = False
 
+# Importar DexScreener como fuente de datos primaria
+try:
+    from dexscreener import DexScreenerClient, TokenInfo
+    DEXSCREENER_OK = True
+except ImportError as e:
+    print(f"⚠️  Advertencia: dexscreener no disponible: {e}")
+    DexScreenerClient = None
+    TokenInfo = None
+    DEXSCREENER_OK = False
+
 try:
     from logger import make_logger, log_evento, log_status, log_trade
 except ImportError as e:
@@ -95,8 +105,7 @@ class BotConfig:
     BUY_TAX_MAXIMO: float = 0.10
     SOLANA_RPC_URL: str = "https://api.mainnet-beta.solana.com"
     JUPITER_API_URL: str = "https://quote-api.jup.ag/v6"
-    BIRDEYE_API_URL: str = "https://public-api.birdeye.so"
-    BIRDEYE_API_KEY: str = ""
+    DEXSCREENER_BASE_URL: str = "https://api.dexscreener.com"
     WALLET_PRIVATE_KEY: str = ""
     SOL_MINT: str = "So11111111111111111111111111111111111111112"
     SLIPPAGE_BPS_COMPRA: int = 300
@@ -110,7 +119,6 @@ class BotConfig:
     
     def __post_init__(self):
         self.SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", self.SOLANA_RPC_URL)
-        self.BIRDEYE_API_KEY = os.getenv("BIRDEYE_API_KEY", self.BIRDEYE_API_KEY)
         self.WALLET_PRIVATE_KEY = os.getenv("WALLET_PRIVATE_KEY", self.WALLET_PRIVATE_KEY)
         self.DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 
@@ -157,6 +165,13 @@ class TokenData:
     buy_tax: float = 0.0
     symbol: Optional[str] = None
     name: Optional[str] = None
+    
+    @property
+    def pump_percent(self) -> float:
+        """Pump detectado (ratio, no porcentaje)"""
+        if self.price_5min_ago and self.price_5min_ago > 0:
+            return (self.price_current - self.price_5min_ago) / self.price_5min_ago
+        return 0.0
 
 @dataclass
 class Entrada:
@@ -192,8 +207,157 @@ class Posicion:
         if precio > self.ath_price:
             self.ath_price = precio
 
+
 # ============================================
-# SECCIÓN 3: FILTROS DE SEGURIDAD
+# SECCIÓN 3: SCANNER (DexScreener)
+# ============================================
+
+class Scanner:
+    """
+    Scanner de tokens usando DexScreener como fuente primaria.
+    Interfaz idéntica al scanner anterior para no romper
+    el resto del bot.
+    """
+
+    def __init__(self):
+        self.dex = DexScreenerClient() if DEXSCREENER_OK else None
+        self.procesados: Set[str] = set()
+        self._sol_price: float = 150.0
+        self._last_sol_update: float = 0
+
+    async def close(self):
+        if self.dex:
+            await self.dex.close()
+
+    async def _actualizar_precio_sol(self):
+        """Actualiza precio SOL cada 60 segundos"""
+        if not self.dex:
+            return
+        if time.time() - self._last_sol_update > 60:
+            precio = await self.dex.get_precio_sol_usd()
+            if precio > 0:
+                self._sol_price = precio
+                self._last_sol_update = time.time()
+
+    async def escanear(self) -> List[TokenData]:
+        """
+        Escanea nuevos tokens con pump detectado.
+        Retorna lista de TokenData compatible con el engine.
+        """
+        if not self.dex:
+            return []
+
+        await self._actualizar_precio_sol()
+
+        try:
+            tokens_dex = await self.dex.escanear_pumps(
+                pump_minimo=config.PUMP_MINIMO_PERCENT,
+                liquidez_minima_sol=config.LIQUIDEZ_MINIMA_SOL,
+                volumen_minimo_sol=config.VOLUMEN_5MIN_MINIMO_SOL,
+                pool_age_min_seconds=config.POOL_AGE_MINIMO_SECONDS,
+            )
+        except Exception as e:
+            logger.error(f"Scanner error: {e}")
+            return []
+
+        resultado = []
+        for t in tokens_dex:
+            if t.mint in self.procesados:
+                continue
+
+            # Convertir TokenInfo → TokenData (interfaz del bot)
+            td = self._convertir(t)
+            if td:
+                resultado.append(td)
+                self.procesados.add(t.mint)
+
+        # Limpiar procesados antiguos (mantener últimos 500)
+        if len(self.procesados) > 500:
+            self.procesados = set(list(self.procesados)[-500:])
+
+        return resultado
+
+    def _convertir(self, t: TokenInfo) -> Optional[TokenData]:
+        """
+        Convierte TokenInfo de DexScreener al formato
+        TokenData que espera el Engine del bot.
+        Mantiene compatibilidad sin modificar el Engine.
+        """
+        try:
+            td = TokenData(
+                mint=t.mint,
+                price_current=t.price_native if t.price_native > 0
+                              else t.price_usd / self._sol_price,
+                price_5min_ago=None,  # DexScreener no da precio hace 5min
+                liquidity_sol=t.liquidity_usd / self._sol_price,
+                holders_count=max(t.buys_m5 * 10, 100),  # estimación
+                pool_created_at=t.created_at,
+                top_holder_percent=0.15,  # conservador sin dato
+                volume_5min=t.volume_m5 / self._sol_price,
+                sell_tax=0.0,
+                buy_tax=0.0,
+                symbol=t.symbol,
+                name=t.name,
+            )
+
+            # Estimar precio hace 5 min desde el cambio %
+            if t.change_m5 != 0:
+                td.price_5min_ago = td.price_current / (1 + t.change_m5 / 100)
+
+            return td
+        except Exception:
+            return None
+
+    async def precio(self, mint: str) -> Optional[float]:
+        """
+        Obtiene precio actualizado de un token.
+        Usado por el Engine para monitorear posiciones.
+        """
+        if not self.dex:
+            return None
+        t = await self.dex.get_token(mint)
+        if t and t.price_native > 0:
+            return t.price_native
+        if t and t.price_usd > 0:
+            return t.price_usd / self._sol_price
+        return None
+
+
+class DetectorPump:
+    """
+    Detector de pumps usando DexScreener.
+    """
+    @staticmethod
+    def detectar(token_data) -> bool:
+        """
+        REGLA 2: "Donde va Vicente va la gente"
+        DexScreener da change_m5 directamente.
+        No necesitamos calcular desde precio histórico.
+        """
+        # Si viene de DexScreener (tiene pump_percent)
+        if hasattr(token_data, 'pump_percent'):
+            pump = token_data.pump_percent
+        # Si viene del formato antiguo (TokenData)
+        elif (token_data.price_5min_ago and
+              token_data.price_5min_ago > 0):
+            pump = ((token_data.price_current -
+                     token_data.price_5min_ago) /
+                     token_data.price_5min_ago)
+        else:
+            return False
+
+        if pump >= config.PUMP_MINIMO_PERCENT:
+            logger.info(
+                f"🚀 PUMP +{pump*100:.0f}%: "
+                f"{token_data.mint[:8]} "
+                f"({getattr(token_data, 'symbol', '')})"
+            )
+            return True
+        return False
+
+
+# ============================================
+# SECCIÓN 4: FILTROS DE SEGURIDAD
 # ============================================
 
 class Filtros:
